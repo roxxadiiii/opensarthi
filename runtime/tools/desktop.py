@@ -6,6 +6,7 @@ class DesktopProvider(Protocol):
     async def capture_screen(self) -> str: ...
     async def type_text(self, text: str) -> bool: ...
     async def click(self, x: int, y: int, button: str = "left") -> bool: ...
+    async def press_key(self, key: str) -> bool: ...
 
 class XdotoolProvider:
     async def capture_screen(self) -> str:
@@ -15,6 +16,15 @@ class XdotoolProvider:
     async def type_text(self, text: str) -> bool:
         proc = await asyncio.create_subprocess_exec(
             "xdotool", "type", "--delay", "50", text,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        await proc.communicate()
+        return proc.returncode == 0
+
+    async def press_key(self, key: str) -> bool:
+        proc = await asyncio.create_subprocess_exec(
+            "xdotool", "key", key,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
@@ -44,6 +54,15 @@ class YdotoolProvider:
         await proc.communicate()
         return proc.returncode == 0
 
+    async def press_key(self, key: str) -> bool:
+        proc = await asyncio.create_subprocess_exec(
+            "ydotool", "key", key,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        await proc.communicate()
+        return proc.returncode == 0
+
     async def click(self, x: int, y: int, button: str = "left") -> bool:
         # ydotool click logic
         return True
@@ -62,6 +81,9 @@ class DesktopTools:
 
     async def type_text(self, text: str) -> bool:
         return await self.provider.type_text(text)
+
+    async def press_key(self, key: str) -> bool:
+        return await self.provider.press_key(key)
 
     async def click(self, x: int, y: int, button: str = "left") -> bool:
         return await self.provider.click(x, y, button)

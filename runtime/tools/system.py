@@ -27,7 +27,9 @@ class SystemTools:
                 "--dev", "/dev",
                 "--proc", "/proc",
                 "--bind", "/home", "/home",
-                "--unshare-net",
+                "--bind", "/run", "/run",
+                "--bind", "/tmp", "/tmp",
+                "--share-net",
                 "bash", "-c", command
             ]
         else:
@@ -41,6 +43,11 @@ class SystemTools:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
+            
+            # If the user instructed to run in background, don't wait for it
+            if command.strip().endswith("&"):
+                return f"Started in background (PID: {proc.pid})"
+                
             stdout, stderr = await proc.communicate()
             
             result = stdout.decode()

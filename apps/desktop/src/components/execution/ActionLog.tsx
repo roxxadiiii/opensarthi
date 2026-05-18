@@ -13,7 +13,7 @@ const STEP_ICON: Record<PlanStep["status"], React.ReactNode> = {
 
 function StepRow({ step }: { step: PlanStep }) {
   const [expanded, setExpanded] = useState(false);
-  const hasDetails = step.error || step.result;
+  const hasDetails = !!(step.error || step.result !== undefined);
 
   return (
     <motion.div

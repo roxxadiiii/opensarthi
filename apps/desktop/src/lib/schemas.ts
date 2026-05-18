@@ -9,12 +9,14 @@ export const WSMessageTypeSchema = z.enum([
   "tool_started",
   "tool_completed",
   "tool_error",
+  "tool_action",
   "observation",
   "assistant_response",
   "permission_request",
   "permission_response",
   "session_state",
   "error",
+  "update_settings",
 ]);
 export type WSMessageType = z.infer<typeof WSMessageTypeSchema>;
 

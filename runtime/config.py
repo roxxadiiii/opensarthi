@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     local_model: str = "qwen2.5-coder:3b"
     cloud_model: str = "kimi-k2.5:cloud"
     openrouter_api_key: str | None = None
+    gemini_api_key: str | None = None
     
     model_config = SettingsConfigDict(env_file=".env")
 

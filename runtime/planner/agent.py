@@ -4,6 +4,7 @@ from pydantic_ai.models.ollama import OllamaModel
 from pydantic_ai.models.openai import OpenAIModel
 from httpx import AsyncClient
 import os
+from typing import Any
 
 os.environ.setdefault("OLLAMA_BASE_URL", "http://localhost:11434")
 
@@ -36,31 +37,51 @@ class AgentDependencies(BaseModel):
     desktop: DesktopTools
     system: SystemTools
     require_cloud: bool = False
+    log_action: Any = None
 
 agent = Agent(
     model=local_llm,
     deps_type=AgentDependencies,
     system_prompt=(
         "You are OpenSarthi, an AI desktop agent for Linux. "
-        "You can control the user's computer to assist them. "
+        "You control the user's computer to assist them. "
         "Break down tasks into safe, atomic tool calls. "
-        "If a task is complex and you need better reasoning, request escalation. "
-        "IMPORTANT: When chatting or replying to the user, respond normally with plain text. "
-        "DO NOT use the type_text tool to chat. type_text is ONLY for controlling external GUI windows."
+        "IMPORTANT RULES:\n"
+        "1. When chatting directly to the user (conversational), respond normally with plain text.\n"
+        "2. To TYPE into another application (like Slack, Chrome), you MUST use the `type_text` tool.\n"
+        "3. To press keys like Enter, Return, Tab, etc., use the `press_key` tool.\n"
+        "4. When opening an app like 'slack' or 'google-chrome', use `run_shell_command` with an ampersand (e.g. 'slack &') so it doesn't block."
     ),
 )
 
 @agent.tool
 async def take_screenshot(ctx: RunContext[AgentDependencies]) -> str:
     """Takes a screenshot of the primary monitor and returns its file path."""
-    return await ctx.deps.desktop.capture_screen()
+    if ctx.deps.log_action: await ctx.deps.log_action("take_screenshot", "Capturing screen...", "running")
+    res = await ctx.deps.desktop.capture_screen()
+    if ctx.deps.log_action: await ctx.deps.log_action("take_screenshot", "Screen captured.", "success", result=res)
+    return res
 
 @agent.tool
 async def type_text(ctx: RunContext[AgentDependencies], text: str) -> bool:
     """Types the given text into the currently focused window."""
-    return await ctx.deps.desktop.type_text(text)
+    if ctx.deps.log_action: await ctx.deps.log_action("type_text", f"Typing: {text}", "running")
+    res = await ctx.deps.desktop.type_text(text)
+    if ctx.deps.log_action: await ctx.deps.log_action("type_text", f"Typed: {text}", "success")
+    return res
+
+@agent.tool
+async def press_key(ctx: RunContext[AgentDependencies], key: str) -> bool:
+    """Presses a specific keyboard key (e.g., 'Return', 'Enter', 'Tab', 'Escape')."""
+    if ctx.deps.log_action: await ctx.deps.log_action("press_key", f"Pressing key: {key}", "running")
+    res = await ctx.deps.desktop.press_key(key)
+    if ctx.deps.log_action: await ctx.deps.log_action("press_key", f"Pressed key: {key}", "success")
+    return res
 
 @agent.tool
 async def run_shell_command(ctx: RunContext[AgentDependencies], command: str) -> str:
     """Runs a shell command in a sandboxed environment."""
-    return await ctx.deps.system.run_command(command)
+    if ctx.deps.log_action: await ctx.deps.log_action("run_shell_command", f"Running: {command}", "running")
+    res = await ctx.deps.system.run_command(command)
+    if ctx.deps.log_action: await ctx.deps.log_action("run_shell_command", f"Executed: {command}", "success", result=res)
+    return res

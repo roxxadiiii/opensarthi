@@ -4,7 +4,6 @@ import { useAssistantStore } from "../stores/assistantStore";
 import { usePermissionStore } from "../stores/permissionStore";
 import {
   PlanSchema,
-  PlanStepSchema,
   PermissionRequestSchema,
   MessageSchema,
 } from "../lib/schemas";
@@ -39,12 +38,49 @@ export function useWebSocket(port: number | null) {
       wsClient.on("transcript_update", (msg) => {
         const { text } = msg.payload as { text: string };
         setTranscript(text);
-        setVoiceState("listening");
+        
+        const lowerText = text.toLowerCase();
+        const hasWakeWord = lowerText.includes("hey sarthi") || lowerText.includes("hello sarthi");
+        
+        if (hasWakeWord) {
+          // Play a simple beep natively in browser for "Google Assistant" style feedback
+          const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+          const oscillator = audioCtx.createOscillator();
+          const gainNode = audioCtx.createGain();
+          oscillator.type = 'sine';
+          oscillator.frequency.setValueAtTime(600, audioCtx.currentTime);
+          oscillator.frequency.exponentialRampToValueAtTime(800, audioCtx.currentTime + 0.1);
+          gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+          oscillator.connect(gainNode);
+          gainNode.connect(audioCtx.destination);
+          oscillator.start();
+          oscillator.stop(audioCtx.currentTime + 0.2);
+          
+          const cleanText = text.replace(/hey sarthi/gi, "").replace(/hello sarthi/gi, "").trim();
+          
+          if (cleanText) {
+            addMessage({ id: crypto.randomUUID(), role: "user", content: cleanText, timestamp: Date.now() });
+            wsClient.send("user_message", { text: cleanText, source: "voice" });
+            setVoiceState("processing");
+            wsClient.send("session_state", { active: false });
+          } else {
+            setVoiceState("listening");
+          }
+        } else {
+          setVoiceState("listening");
+        }
       }),
 
       wsClient.on("plan_created", (msg) => {
         const plan = PlanSchema.parse(msg.payload);
         setPlan(plan);
+        setVoiceState("processing");
+      }),
+
+      wsClient.on("tool_action", (msg) => {
+        const { tool, description, status, result } = msg.payload as any;
+        useAssistantStore.getState().addOrUpdateToolAction(tool, description, status, result);
         setVoiceState("processing");
       }),
 

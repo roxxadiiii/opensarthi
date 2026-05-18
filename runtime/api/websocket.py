@@ -2,6 +2,7 @@ import asyncio
 import uuid
 import structlog
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from typing import Any
 
 from planner.agent import agent, AgentDependencies
 from tools.desktop import DesktopTools
@@ -18,10 +19,21 @@ class Session:
         self.desktop_tools = DesktopTools()
         self.system_tools = SystemTools()
         self.voice_pipeline = VoicePipeline()
+        async def log_action_cb(tool: str, description: str, status: str, result: Any = None):
+            await self.send_message("tool_action", {
+                "tool": tool,
+                "description": description,
+                "status": status,
+                "result": result
+            })
+
         self.deps = AgentDependencies(
             desktop=self.desktop_tools,
-            system=self.system_tools
+            system=self.system_tools,
+            log_action=log_action_cb
         )
+        import db
+        self.thread_id = db.create_thread()
 
     async def send_message(self, msg_type: str, payload: dict):
         msg = {
@@ -35,17 +47,42 @@ class Session:
     async def handle_user_message(self, text: str):
         logger.info("Processing user message", text=text)
         
-        # In a full implementation, we'd manage conversation history here
-        # For now, just run the agent on the current input
         try:
-            result = await agent.run(text, deps=self.deps)
+            import db
+            import time
+            msg_id = str(uuid.uuid4())
+            timestamp = int(time.time() * 1000)
+            db.save_message(self.thread_id, msg_id, "user", text, timestamp)
+
+            from config import settings
+            # Dynamically resolve model based on config
+            model_name = settings.local_model.lower()
+            if "gemini" in model_name:
+                from pydantic_ai.models.gemini import GeminiModel
+                active_model = GeminiModel(settings.local_model)
+            else:
+                from pydantic_ai.models.openai import OpenAIModel
+                from pydantic_ai.providers.openai import OpenAIProvider
+                active_model = OpenAIModel(
+                    model_name=settings.local_model,
+                    provider=OpenAIProvider(
+                        base_url='http://localhost:11434/v1',
+                        api_key='ollama',
+                    )
+                )
+
+            result = await agent.run(text, deps=self.deps, model=active_model)
             
+            ast_msg_id = str(uuid.uuid4())
+            ast_timestamp = int(time.time() * 1000)
+            db.save_message(self.thread_id, ast_msg_id, "assistant", result.output, ast_timestamp)
+
             # Send the assistant's response back to the UI
             await self.send_message("assistant_response", {
-                "id": str(uuid.uuid4()),
+                "id": ast_msg_id,
                 "role": "assistant",
                 "content": result.output,
-                "timestamp": int(asyncio.get_event_loop().time() * 1000)
+                "timestamp": ast_timestamp
             })
             
             # Trigger TTS for the response
@@ -68,6 +105,21 @@ class Session:
                 asyncio.create_task(self._listen_loop())
             else:
                 self.voice_pipeline.stop_listening()
+        elif msg_type == "update_settings":
+            from config import settings
+            settings.local_model = payload.get("local_model", settings.local_model)
+            settings.cloud_model = payload.get("cloud_model", settings.cloud_model)
+            settings.gemini_api_key = payload.get("gemini_api_key", settings.gemini_api_key)
+            if settings.gemini_api_key:
+                import os
+                os.environ["GEMINI_API_KEY"] = settings.gemini_api_key
+            logger.info("Settings updated", local_model=settings.local_model, cloud_model=settings.cloud_model)
+            await self.send_message("assistant_response", {
+                "id": str(uuid.uuid4()),
+                "role": "system",
+                "content": f"Settings saved! Local: {settings.local_model}, Cloud: {settings.cloud_model}",
+                "timestamp": int(asyncio.get_event_loop().time() * 1000)
+            })
 
     async def _listen_loop(self):
         """Simulate sending transcript updates."""
