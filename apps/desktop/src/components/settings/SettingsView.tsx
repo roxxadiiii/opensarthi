@@ -67,28 +67,45 @@ export function SettingsView({ onClose, currentLocalModel, currentCloudModel, cu
 
           <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
             <label style={{ fontSize: "12px", color: "var(--text-secondary)" }}>CLOUD AI MODEL</label>
-            <input
+            <select
               value={cloudModel}
               onChange={(e) => setCloudModel(e.target.value)}
-              placeholder="e.g. gemini-2.5-flash"
               style={{
-                background: "rgba(0,0,0,0.4)",
+                background: "#141414",
                 border: "1px solid var(--border)",
                 padding: "8px",
+                paddingRight: "32px",
                 color: "var(--text-primary)",
                 fontFamily: "var(--font-mono)",
-                fontSize: "13px"
+                fontSize: "13px",
+                outline: "none",
+                borderRadius: "0px",
+                WebkitAppearance: "none",
+                MozAppearance: "none",
+                appearance: "none",
+                backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ff3b30' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e")`,
+                backgroundRepeat: "no-repeat",
+                backgroundPosition: "right 8px center",
+                backgroundSize: "16px",
+                colorScheme: "dark"
               }}
-            />
+            >
+              <option value="gemini-2.5-flash" style={{ background: "#141414", color: "#ffffff" }}>Google Gemini 2.5 Flash</option>
+              <option value="gemini-2.5-pro" style={{ background: "#141414", color: "#ffffff" }}>Google Gemini 2.5 Pro</option>
+              <option value="gpt-4o" style={{ background: "#141414", color: "#ffffff" }}>OpenAI GPT-4o</option>
+              <option value="gpt-4-turbo" style={{ background: "#141414", color: "#ffffff" }}>OpenAI GPT-4 Turbo</option>
+              <option value="claude-3-5-sonnet" style={{ background: "#141414", color: "#ffffff" }}>Anthropic Claude 3.5 Sonnet</option>
+              <option value="claude-3-opus" style={{ background: "#141414", color: "#ffffff" }}>Anthropic Claude 3 Opus</option>
+            </select>
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-            <label style={{ fontSize: "12px", color: "var(--text-secondary)" }}>GEMINI API KEY</label>
+            <label style={{ fontSize: "12px", color: "var(--text-secondary)" }}>API KEY</label>
             <input
               value={geminiKey}
               onChange={(e) => setGeminiKey(e.target.value)}
               type="password"
-              placeholder="AIza..."
+              placeholder="Enter API Key for the selected model..."
               style={{
                 background: "rgba(0,0,0,0.4)",
                 border: "1px solid var(--border)",

@@ -37,38 +37,41 @@ export function useWebSocket(port: number | null) {
 
       wsClient.on("transcript_update", (msg) => {
         const { text } = msg.payload as { text: string };
-        setTranscript(text);
-        
-        const lowerText = text.toLowerCase();
-        const hasWakeWord = lowerText.includes("hey sarthi") || lowerText.includes("hello sarthi");
-        
-        if (hasWakeWord) {
-          // Play a simple beep natively in browser for "Google Assistant" style feedback
-          const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-          const oscillator = audioCtx.createOscillator();
-          const gainNode = audioCtx.createGain();
-          oscillator.type = 'sine';
-          oscillator.frequency.setValueAtTime(600, audioCtx.currentTime);
-          oscillator.frequency.exponentialRampToValueAtTime(800, audioCtx.currentTime + 0.1);
-          gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
-          gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
-          oscillator.connect(gainNode);
-          gainNode.connect(audioCtx.destination);
-          oscillator.start();
-          oscillator.stop(audioCtx.currentTime + 0.2);
+        const { voiceState, setVoiceState, setTranscript } = useAssistantStore.getState();
+
+        if (voiceState === "idle" || voiceState === "error") {
+          const lowerText = text.toLowerCase();
+          const hasWakeWord = 
+            lowerText.includes("sarthi") || 
+            lowerText.includes("sarathi") || 
+            lowerText.includes("sarth") || 
+            lowerText.includes("sarath");
           
-          const cleanText = text.replace(/hey sarthi/gi, "").replace(/hello sarthi/gi, "").trim();
-          
-          if (cleanText) {
-            addMessage({ id: crypto.randomUUID(), role: "user", content: cleanText, timestamp: Date.now() });
-            wsClient.send("user_message", { text: cleanText, source: "voice" });
-            setVoiceState("processing");
-            wsClient.send("session_state", { active: false });
-          } else {
+          if (hasWakeWord) {
+            // Play a simple beep natively in browser for "Google Assistant" style feedback
+            const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(600, audioCtx.currentTime);
+            oscillator.frequency.exponentialRampToValueAtTime(800, audioCtx.currentTime + 0.1);
+            gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            oscillator.start();
+            oscillator.stop(audioCtx.currentTime + 0.2);
+            
+            const cleanText = text
+              .replace(/(?:hey|hello|hi|he)?\s*(?:sarathi|sarthi|sarath|sarth)/gi, "")
+              .replace(/hey!/gi, "")
+              .trim();
+            
             setVoiceState("listening");
+            setTranscript(cleanText);
           }
-        } else {
-          setVoiceState("listening");
+        } else if (voiceState === "listening") {
+          setTranscript(text);
         }
       }),
 
@@ -105,6 +108,18 @@ export function useWebSocket(port: number | null) {
         addMessage(message);
         setTranscript(null);
         setVoiceState("idle");
+        setPlan(null);
+        setExecutingStep(null);
+      }),
+
+      wsClient.on("history_response", (msg) => {
+        const { threads } = msg.payload as any;
+        useAssistantStore.getState().setThreads(threads);
+      }),
+
+      wsClient.on("thread_loaded", (msg) => {
+        const { messages } = msg.payload as any;
+        useAssistantStore.getState().setMessages(messages);
         setPlan(null);
         setExecutingStep(null);
       }),

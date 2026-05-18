@@ -55,11 +55,29 @@ class Session:
             db.save_message(self.thread_id, msg_id, "user", text, timestamp)
 
             from config import settings
-            # Dynamically resolve model based on config
-            model_name = settings.local_model.lower()
+            model_name = settings.cloud_model.lower()
+            
+            # Use the provided API key (stored in gemini_api_key field generically)
+            api_key = settings.gemini_api_key
+            import os
+
+            if api_key:
+                if "gemini" in model_name:
+                    os.environ["GEMINI_API_KEY"] = api_key
+                elif "claude" in model_name:
+                    os.environ["ANTHROPIC_API_KEY"] = api_key
+                elif "gpt" in model_name:
+                    os.environ["OPENAI_API_KEY"] = api_key
+
             if "gemini" in model_name:
                 from pydantic_ai.models.gemini import GeminiModel
-                active_model = GeminiModel(settings.local_model)
+                active_model = GeminiModel(settings.cloud_model)
+            elif "claude" in model_name:
+                from pydantic_ai.models.anthropic import AnthropicModel
+                active_model = AnthropicModel(settings.cloud_model)
+            elif "gpt" in model_name:
+                from pydantic_ai.models.openai import OpenAIModel
+                active_model = OpenAIModel(settings.cloud_model)
             else:
                 from pydantic_ai.models.openai import OpenAIModel
                 from pydantic_ai.providers.openai import OpenAIProvider
@@ -100,20 +118,31 @@ class Session:
         if msg_type == "user_message":
             await self.handle_user_message(payload.get("text", ""))
         elif msg_type == "session_state":
-            active = payload.get("active", False)
-            if active:
-                asyncio.create_task(self._listen_loop())
-            else:
-                self.voice_pipeline.stop_listening()
+            pass # Keep mic listening for continuous wake word
+        elif msg_type == "new_chat":
+            import db
+            self.thread_id = db.create_thread()
+            logger.info("Created new chat thread", thread_id=self.thread_id)
+        elif msg_type == "get_history":
+            import db
+            threads = db.get_all_threads()
+            await self.send_message("history_response", {"threads": threads})
+        elif msg_type == "load_thread":
+            import db
+            thread_id = payload.get("thread_id")
+            self.thread_id = thread_id
+            messages = db.get_history(thread_id)
+            await self.send_message("thread_loaded", {"thread_id": thread_id, "messages": messages})
         elif msg_type == "update_settings":
-            from config import settings
+            from config import settings, save_settings_to_env
             settings.local_model = payload.get("local_model", settings.local_model)
             settings.cloud_model = payload.get("cloud_model", settings.cloud_model)
             settings.gemini_api_key = payload.get("gemini_api_key", settings.gemini_api_key)
+            save_settings_to_env(settings.local_model, settings.cloud_model, settings.gemini_api_key)
             if settings.gemini_api_key:
                 import os
                 os.environ["GEMINI_API_KEY"] = settings.gemini_api_key
-            logger.info("Settings updated", local_model=settings.local_model, cloud_model=settings.cloud_model)
+            logger.info("Settings updated and saved to .env", local_model=settings.local_model, cloud_model=settings.cloud_model)
             await self.send_message("assistant_response", {
                 "id": str(uuid.uuid4()),
                 "role": "system",
@@ -123,7 +152,6 @@ class Session:
 
     async def _listen_loop(self):
         """Simulate sending transcript updates."""
-        await self.send_message("session_state", {"voiceState": "listening"})
         async for transcript in self.voice_pipeline.start_listening():
             await self.send_message("transcript_update", {"text": transcript})
 
@@ -136,6 +164,7 @@ class ConnectionManager:
         session = Session(websocket)
         self.sessions[websocket] = session
         logger.info("Client connected", session_id=session.session_id)
+        asyncio.create_task(session._listen_loop())
         return session
 
     def disconnect(self, websocket: WebSocket):

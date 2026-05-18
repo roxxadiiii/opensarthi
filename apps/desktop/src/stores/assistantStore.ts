@@ -1,6 +1,12 @@
 import { create } from "zustand";
 import type { Message, Plan, PlanStep, VoiceState } from "../lib/schemas";
 
+export interface Thread {
+  id: string;
+  created_at: string;
+  first_message: string;
+}
+
 interface AssistantState {
   // Session
   voiceState: VoiceState;
@@ -9,21 +15,28 @@ interface AssistantState {
 
   // Conversation
   messages: Message[];
+  threads: Thread[];
 
   // Execution
   currentPlan: Plan | null;
   executingStepIndex: number | null;
+
+  activeLocalModel: string;
+  activeCloudModel: string;
 
   // Actions
   setVoiceState: (state: VoiceState) => void;
   setConnected: (connected: boolean) => void;
   setTranscript: (text: string | null) => void;
   addMessage: (msg: Message) => void;
+  setMessages: (msgs: Message[]) => void;
+  setThreads: (threads: Thread[]) => void;
   clearMessages: () => void;
   setPlan: (plan: Plan | null) => void;
   updateStepStatus: (index: number, update: Partial<PlanStep>) => void;
   setExecutingStep: (index: number | null) => void;
   addOrUpdateToolAction: (tool: string, description: string, status: "pending" | "running" | "success" | "error" | "skipped", result?: any) => void;
+  setActiveModels: (local: string, cloud: string) => void;
 }
 
 export const useAssistantStore = create<AssistantState>((set) => ({
@@ -31,8 +44,11 @@ export const useAssistantStore = create<AssistantState>((set) => ({
   isConnected: false,
   currentTranscript: null,
   messages: [],
+  threads: [],
   currentPlan: null,
   executingStepIndex: null,
+  activeLocalModel: "qwen2.5-coder:3b",
+  activeCloudModel: "gemini-2.5-flash",
 
   setVoiceState: (voiceState) => set({ voiceState }),
   setConnected: (isConnected) => set({ isConnected }),
@@ -41,9 +57,14 @@ export const useAssistantStore = create<AssistantState>((set) => ({
   addMessage: (msg) =>
     set((s) => ({ messages: [...s.messages, msg] })),
 
+  setMessages: (messages) => set({ messages }),
+  setThreads: (threads) => set({ threads }),
+
   clearMessages: () => set({ messages: [], currentPlan: null }),
 
   setPlan: (currentPlan) => set({ currentPlan, executingStepIndex: null }),
+
+  setActiveModels: (local, cloud) => set({ activeLocalModel: local, activeCloudModel: cloud }),
 
   updateStepStatus: (index, update) =>
     set((s) => {

@@ -12,11 +12,16 @@ export const WSMessageTypeSchema = z.enum([
   "tool_action",
   "observation",
   "assistant_response",
+  "history_response",
+  "thread_loaded",
   "permission_request",
   "permission_response",
   "session_state",
   "error",
   "update_settings",
+  "get_history",
+  "load_thread",
+  "new_chat",
 ]);
 export type WSMessageType = z.infer<typeof WSMessageTypeSchema>;
 
