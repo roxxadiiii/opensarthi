@@ -35,7 +35,3 @@ Thumbs.db
 # Build outputs
 apps/desktop/dist/
 *.wasm
-
-# Mock
-apps/desktop/src-tauri/mock_pkg_config/*
-
