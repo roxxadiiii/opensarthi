@@ -211,14 +211,33 @@ class AgentRuntime:
                 try:
                     data = json.loads(json_text)
                     
+                    # Tool positional arg order for list-style args (some models like Llama send args as a list)
+                    TOOL_ARG_ORDER = {
+                        "open_app":        ["app"],
+                        "click":           ["x", "y", "button"],
+                        "type_text":       ["text"],
+                        "press_key":       ["key"],
+                        "shell":           ["command", "timeout"],
+                        "wait_for_window": ["title", "timeout"],
+                        "wait_for_text":   ["text", "timeout"],
+                        "click_element":   ["role", "name"],
+                    }
+                    
                     # Robust cleanup before pydantic validation
                     def _cleanup_step(s: dict) -> dict:
                         if "description" not in s and "comment" in s:
                             s["description"] = s.pop("comment")
                         elif "description" not in s:
                             s["description"] = ""
-                        if "args" not in s:
+                        
+                        # Convert list-style args to named dict: ["konsole"] → {"app": "konsole"}
+                        if "args" not in s or s["args"] is None:
                             s["args"] = {}
+                        elif isinstance(s["args"], list):
+                            tool_name = s.get("tool", "")
+                            arg_keys = TOOL_ARG_ORDER.get(tool_name, [])
+                            s["args"] = {k: v for k, v in zip(arg_keys, s["args"])}
+                        
                         return s
                         
                     if isinstance(data, list):
