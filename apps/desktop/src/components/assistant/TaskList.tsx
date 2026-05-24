@@ -1,6 +1,6 @@
 import { useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, CheckCircle2, XCircle, Clock, Zap, ChevronRight } from "lucide-react";
+import { motion } from "framer-motion";
+import { Loader2, CheckCircle2, XCircle, Clock } from "lucide-react";
 import type { Message, Plan } from "../../lib/schemas";
 
 interface AgenticTask {
@@ -152,17 +152,7 @@ export function TaskList({
     });
   }
 
-  // Current running task (from live plan)
-  const selectedTask = agenticTasks.find(t => t.id === selectedTaskId);
-  const liveToolActions = selectedTask?.status === "running" && currentPlan
-    ? currentPlan.steps.map(s => ({
-        tool: s.tool,
-        description: s.description || s.tool,
-        status: s.status || "pending" as const,
-        result: s.result,
-        timestamp: s.timestamp,
-      }))
-    : selectedTask?.toolActions ?? [];
+
 
   // Auto-select latest running task
   useEffect(() => {
@@ -250,71 +240,7 @@ export function TaskList({
         </div>
       )}
 
-      {/* Tool calls panel for selected task */}
-      <AnimatePresence>
-        {selectedTask && liveToolActions.length > 0 && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            style={{
-              borderTop: "1px solid var(--border)",
-              marginTop: "8px",
-              paddingTop: "8px",
-              display: "flex",
-              flexDirection: "column",
-              gap: "4px",
-              maxHeight: "180px",
-              overflowY: "auto",
-            }}
-          >
-            <div style={{ fontSize: "9px", color: "var(--text-muted)", letterSpacing: "0.06em", marginBottom: "4px", display: "flex", alignItems: "center", gap: "4px" }}>
-              <Zap size={9} /> TOOL CALLS ({liveToolActions.length})
-            </div>
-            {[...liveToolActions].reverse().map((action, idx) => (
-              <div
-                key={idx}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  padding: "4px 7px",
-                  borderRadius: "2px",
-                  background: action.status === "running"
-                    ? "var(--accent-glow)"
-                    : action.status === "success"
-                    ? "rgba(0,230,180,0.07)"
-                    : action.status === "error"
-                    ? "rgba(255,60,60,0.07)"
-                    : "rgba(255,255,255,0.03)",
-                  border: `1px solid ${
-                    action.status === "running" ? "var(--border-accent)" :
-                    action.status === "success" ? "rgba(0,230,180,0.2)" :
-                    action.status === "error" ? "rgba(255,60,60,0.2)" :
-                    "var(--border)"
-                  }`,
-                  fontSize: "10px",
-                  fontFamily: "var(--font-mono)",
-                }}
-              >
-                {action.status === "running" && <Loader2 size={9} className="animate-spin" style={{ color: "var(--accent)", flexShrink: 0 }} />}
-                {action.status === "success" && <CheckCircle2 size={9} style={{ color: "var(--success)", flexShrink: 0 }} />}
-                {action.status === "error" && <XCircle size={9} style={{ color: "var(--danger)", flexShrink: 0 }} />}
-                {(action.status === "pending" || action.status === "skipped") && <ChevronRight size={9} style={{ color: "var(--text-muted)", flexShrink: 0 }} />}
-                <span style={{ color: "var(--accent)", flexShrink: 0, fontSize: "9px" }}>{action.tool}</span>
-                <span style={{ color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
-                  {action.description}
-                </span>
-                {action.timestamp && (
-                  <span style={{ fontSize: "8.5px", color: "var(--text-muted)", fontFamily: "var(--font-mono)", opacity: 0.7, flexShrink: 0, marginLeft: "6px" }}>
-                    {new Date(action.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
-                  </span>
-                )}
-              </div>
-            ))}
-          </motion.div>
-        )}
-      </AnimatePresence>
+
     </div>
   );
 }

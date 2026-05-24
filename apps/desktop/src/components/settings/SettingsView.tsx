@@ -235,15 +235,17 @@ export function SettingsView({
       .map((w) => w.trim())
       .filter(Boolean);
 
+    // Only send the key that's being actively edited — don't overwrite other saved keys with empty strings
+    const currentKey = getCurrentKeyInput();
     onSave({
       localModel,
       cloudModel,
       provider,
-      geminiKey,
-      openaiKey,
-      anthropicKey,
-      groqKey,
-      openrouterKey,
+      geminiKey:     provider === "google"      ? (currentKey || currentGeminiKey)      : currentGeminiKey,
+      openaiKey:     provider === "openai"      ? (currentKey || currentOpenaiKey)      : currentOpenaiKey,
+      anthropicKey:  provider === "anthropic"   ? (currentKey || currentAnthropicKey)  : currentAnthropicKey,
+      groqKey:       provider === "groq"        ? (currentKey || currentGroqKey)        : currentGroqKey,
+      openrouterKey: provider === "openrouter"  ? (currentKey || currentOpenrouterKey) : currentOpenrouterKey,
       voiceAccent,
       voiceSpeed,
       continuousListening: true,
@@ -450,9 +452,10 @@ export function SettingsView({
                 <option value="theme-red-black">🔴 Dark Crimson (HUD Default)</option>
                 <option value="theme-green-black">🟢 Dark Forest (Matrix Green)</option>
                 <option value="theme-purple-black">🟣 Dark Nebula (Cyberpunk Purple)</option>
-                <option value="theme-blue-black">🔵 Dark Ocean (Deep Blue)</option>
+                <option value="theme-blue-black">🌊 Dark Ocean (Neon Cyan)</option>
                 <option value="theme-light-sakura">🌸 Light Sakura (Pink &amp; White)</option>
                 <option value="theme-light-slate">🏙️ Light Slate (Sky Blue &amp; Gray)</option>
+                <option value="theme-light-clean">⬜ Light Clean (Pure White)</option>
               </select>
             </div>
           </div>

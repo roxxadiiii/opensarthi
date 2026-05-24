@@ -469,7 +469,7 @@ export function AssistantOverlay({ onOpenSettings, onOpenHistory, onNewChat }: A
               <div className="hud-panel-title">// LIVE PLAN & ACTIVITY</div>
               <div style={{ padding: "12px", overflowY: "auto", flex: 1, display: "flex", flexDirection: "column", gap: "12px" }}>
                 <TranscriptView transcript={currentTranscript} />
-                <ActionLog plan={currentPlan} />
+                <ActionLog plan={currentPlan} selectedTaskId={selectedTaskId} messages={messages} />
               </div>
             </div>
             <div className="hud-panel" style={{ padding: "12px", display: "flex", flexDirection: "column", gap: "8px", flexShrink: 0 }}>
