@@ -101,17 +101,17 @@ export function useWebSocket(port: number | null) {
       wsClient.on("tool_started", (msg) => {
         const { index } = msg.payload as { index: number };
         setExecutingStep(index);
-        updateStepStatus(index, { status: "running" });
+        updateStepStatus(index, { status: "running", timestamp: Date.now() });
       }),
 
       wsClient.on("tool_completed", (msg) => {
         const { index, result } = msg.payload as { index: number; result: unknown };
-        updateStepStatus(index, { status: "success", result });
+        updateStepStatus(index, { status: "success", result, timestamp: Date.now() });
       }),
 
       wsClient.on("tool_error", (msg) => {
         const { index, error } = msg.payload as { index: number; error: string };
-        updateStepStatus(index, { status: "error", error });
+        updateStepStatus(index, { status: "error", error, timestamp: Date.now() });
       }),
 
       wsClient.on("assistant_response", (msg) => {

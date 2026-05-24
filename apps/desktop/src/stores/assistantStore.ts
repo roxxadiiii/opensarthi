@@ -172,7 +172,7 @@ export const useAssistantStore = create<AssistantState>((set) => ({
     const existingIndex = steps.findIndex(st => st.tool === tool && st.description === description && st.status === "running");
     
     if (existingIndex >= 0) {
-      steps[existingIndex] = { ...steps[existingIndex], status, result };
+      steps[existingIndex] = { ...steps[existingIndex], status, result, timestamp: Date.now() };
     } else {
       steps.push({
         index: steps.length,
@@ -180,7 +180,8 @@ export const useAssistantStore = create<AssistantState>((set) => ({
         args: {},
         description,
         status,
-        result
+        result,
+        timestamp: Date.now()
       });
     }
 

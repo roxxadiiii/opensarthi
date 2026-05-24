@@ -49,6 +49,25 @@ class AgentRuntime:
                 await self._transition(AgentState.COMPLETE)
                 return response
 
+            import uuid
+            plan_id = str(uuid.uuid4())
+            steps_data = []
+            for idx, s in enumerate(plan.steps):
+                steps_data.append({
+                    "index": idx,
+                    "tool": s.tool,
+                    "args": s.args or {},
+                    "description": s.description or s.tool,
+                    "status": "pending"
+                })
+
+            await self.ws.send_message("plan_created", {
+                "id": plan_id,
+                "goal": plan.goal or goal or "Executing Task",
+                "steps": steps_data,
+                "recovery_hint": plan.recovery_hint
+            })
+
             self.state.total_steps = len(plan.steps)
             await self._transition(AgentState.PLANNING)
 
@@ -125,17 +144,20 @@ class AgentRuntime:
                 await self._transition(AgentState.IDLE)
                 return "Execution cancelled by user."
 
-            # 4. Complete — generate a meaningful summary
+            # 4. Complete — generate a human-readable summary
             await self._transition(AgentState.COMPLETE)
             if plan.final_response:
                 return plan.final_response
             
-            # Build summary of what was done
+            # Build a natural summary: "Done. I [goal steps]"
             step_descriptions = [s.description for s in plan.steps if s.description]
+            goal_text = plan.goal or goal or ""
             if step_descriptions:
-                summary_items = "\n".join(f"✓ {d}" for d in step_descriptions)
-                return f"Task completed successfully:\n{summary_items}"
-            return "Task completed successfully."
+                summary_lines = "\n".join(f"✓ {d}" for d in step_descriptions)
+                # Use the original goal for the spoken part
+                spoken = f"Done. I've completed the task: {goal_text}" if goal_text else "Done. All steps completed successfully."
+                return f"{spoken}\n{summary_lines}"
+            return f"Done. {goal_text or 'Task completed.'}"
 
         except asyncio.CancelledError:
             await self._transition(AgentState.IDLE)
@@ -241,6 +263,9 @@ class AgentRuntime:
                     
                     # Robust cleanup before pydantic validation
                     def _cleanup_step(s: dict) -> dict:
+                        if "tool" not in s and "action" in s:
+                            s["tool"] = s.pop("action")
+                            
                         if "description" not in s and "comment" in s:
                             s["description"] = s.pop("comment")
                         elif "description" not in s:
@@ -279,11 +304,16 @@ class AgentRuntime:
         from tools.registry import get
         tool = get(step.tool)
         if tool is None:
-            return ToolResult(
+            err_res = ToolResult(
                 success=False,
                 error=f"Unknown tool: {step.tool}",
                 retryable=False
             )
+            await self.ws.send_message("tool_error", {
+                "index": index,
+                "error": err_res.error
+            })
+            return err_res
         
         # Broadcast tool action starting
         await self.ws.send_message("tool_action", {
@@ -292,6 +322,7 @@ class AgentRuntime:
             "status": "running",
             "result": None
         })
+        await self.ws.send_message("tool_started", {"index": index})
 
         res = await tool.safe_execute(step.args, permission_manager=self.ws)
 
@@ -299,9 +330,20 @@ class AgentRuntime:
         await self.ws.send_message("tool_action", {
             "tool": step.tool,
             "description": step.description,
-            "status": "success" if res.success else "failed",
+            "status": "success" if res.success else "error",
             "result": res.observation if res.success else res.error
         })
+
+        if res.success:
+            await self.ws.send_message("tool_completed", {
+                "index": index,
+                "result": res.observation
+            })
+        else:
+            await self.ws.send_message("tool_error", {
+                "index": index,
+                "error": res.error or "Unknown error"
+            })
 
         return res
 

@@ -34,7 +34,7 @@ function parseThinking(content: string): { thinking: string; response: string; i
   return { thinking, response: remaining, isComplete: thinkBlocks.length > 0 };
 }
 
-function ThinkingBlock({ thinking, isComplete }: { thinking: string; isComplete: boolean }) {
+function ThinkingBlock({ thinking, isComplete, timestamp }: { thinking: string; isComplete: boolean; timestamp?: number }) {
   const [isOpen, setIsOpen] = useState(!isComplete);
 
   useEffect(() => {
@@ -83,7 +83,14 @@ function ThinkingBlock({ thinking, isComplete }: { thinking: string; isComplete:
             boxShadow: isComplete ? "none" : "0 0 8px var(--accent)",
             animation: isComplete ? "none" : "pulseDot 1.5s infinite"
           }} />
-          <span style={{ opacity: 0.8 }}>{isComplete ? "THINKING PROCESS" : "THINKING..."}</span>
+          <span style={{ opacity: 0.8, display: "flex", alignItems: "center", gap: "4px" }}>
+            {isComplete ? "THINKING PROCESS" : "THINKING..."}
+            {timestamp && (
+              <span style={{ fontSize: "9px", color: "var(--text-muted)", fontWeight: "normal", fontFamily: "var(--font-mono)", opacity: 0.8 }}>
+                [{new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}]
+              </span>
+            )}
+          </span>
         </div>
         <span style={{ fontSize: "9px", opacity: 0.6 }}>{isOpen ? "COLLAPSE ▲" : "EXPAND ▼"}</span>
       </div>
@@ -252,15 +259,18 @@ export function ResponseBubble({ message }: ResponseBubbleProps) {
         }}
       >
         {thinking && (
-          <ThinkingBlock thinking={thinking} isComplete={isComplete} />
+          <ThinkingBlock thinking={thinking} isComplete={isComplete} timestamp={message.timestamp} />
         )}
         
         {response && (
-          <div>{renderContent(response)}</div>
+          <div style={{ flex: 1 }}>{renderContent(response)}</div>
         )}
-        
-        {!isUser && response && (
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "2px" }}>
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "4px", borderTop: "1px solid rgba(255,255,255,0.04)", paddingTop: "4px", gap: "10px" }}>
+          <span style={{ fontSize: "9px", color: "var(--text-muted)", opacity: 0.75, fontFamily: "var(--font-mono)", letterSpacing: "0.03em" }}>
+            [ {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })} ]
+          </span>
+          {!isUser && response && (
             <button
               onClick={() => {
                 // Strip thinking tag before TTS read-out
@@ -293,8 +303,8 @@ export function ResponseBubble({ message }: ResponseBubbleProps) {
               <Volume2 size={12} />
               LISTEN
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </motion.div>
   );
@@ -302,9 +312,11 @@ export function ResponseBubble({ message }: ResponseBubbleProps) {
 
 interface MessageListProps {
   messages: Message[];
+  messageRefsMap?: React.MutableRefObject<Record<string, HTMLDivElement | null>>;
+  onSelectMessage?: (msgId: string) => void;
 }
 
-export function MessageList({ messages }: MessageListProps) {
+export function MessageList({ messages, messageRefsMap, onSelectMessage }: MessageListProps) {
   return (
     <div
       style={{
@@ -318,7 +330,16 @@ export function MessageList({ messages }: MessageListProps) {
     >
       <AnimatePresence initial={false}>
         {messages.map((msg) => (
-          <ResponseBubble key={msg.id} message={msg} />
+          <div
+            key={msg.id}
+            ref={(el) => {
+              if (messageRefsMap) messageRefsMap.current[msg.id] = el;
+            }}
+            onClick={() => onSelectMessage?.(msg.id)}
+            style={{ transition: "outline 0.3s", cursor: onSelectMessage ? "pointer" : "default" }}
+          >
+            <ResponseBubble message={msg} />
+          </div>
         ))}
       </AnimatePresence>
     </div>

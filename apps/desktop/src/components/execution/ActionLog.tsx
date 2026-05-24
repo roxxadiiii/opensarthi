@@ -36,6 +36,11 @@ function StepRow({ step }: { step: PlanStep }) {
           <span style={{ color: "var(--text-muted)", marginRight: "4px" }}>{step.tool}</span>
           {step.description}
         </span>
+        {step.timestamp && (
+          <span style={{ fontSize: "10px", color: "var(--text-muted)", fontFamily: "var(--font-mono)", marginRight: "4px" }}>
+            {new Date(step.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
+          </span>
+        )}
         {hasDetails && (
           expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />
         )}

@@ -53,6 +53,7 @@ export const PlanStepSchema = z.object({
   status: z.enum(["pending", "running", "success", "error", "skipped"]),
   error: z.string().optional(),
   result: z.unknown().optional(),
+  timestamp: z.number().optional(),
 });
 export type PlanStep = z.infer<typeof PlanStepSchema>;
 

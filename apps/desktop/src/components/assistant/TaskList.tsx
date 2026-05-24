@@ -1,220 +1,320 @@
-import { motion } from "framer-motion";
-import { Loader2, CheckCircle2, XCircle, Clock } from "lucide-react";
-import type { Message } from "../../lib/schemas";
+import { useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Loader2, CheckCircle2, XCircle, Clock, Zap, ChevronRight } from "lucide-react";
+import type { Message, Plan } from "../../lib/schemas";
 
-interface Task {
-  id: string;
+interface AgenticTask {
+  id: string;           // user message id
+  userMsgId: string;
   title: string;
   icon: string;
-  details: string;
-  status: "pending" | "running" | "success" | "error";
+  prompt: string;
+  status: "running" | "success" | "error" | "pending";
   timestamp: number;
+  toolActions: Array<{
+    tool: string;
+    description: string;
+    status: "pending" | "running" | "success" | "error" | "skipped";
+    result?: any;
+    timestamp?: number;
+  }>;
 }
 
 interface TaskListProps {
   messages: Message[];
   voiceState: string;
   hasActivePlan: boolean;
+  currentPlan: Plan | null;
+  onScrollToMessage?: (msgId: string) => void;
+  selectedTaskId: string | null;
+  setSelectedTaskId: (id: string | null) => void;
+  taskRefsMap?: React.MutableRefObject<Record<string, HTMLDivElement | null>>;
 }
 
-function isAgenticTask(msg: Message, assistantMsg?: Message): boolean {
-  const p = msg.content.toLowerCase();
-  
-  // Explicit task keywords
-  const hasTaskKeyword = 
-    p.includes("update") || p.includes("upgrade") ||
-    p.includes("install") || p.includes("pacman") || p.includes("yay") ||
-    p.includes("remove") || p.includes("uninstall") ||
-    p.includes("reboot") || p.includes("restart") ||
-    p.includes("shutdown") || p.includes("poweroff") ||
-    p.includes("search") || p.includes("find") || p.includes("grep") ||
-    p.includes("open") || p.includes("launch") || p.includes("start") ||
-    p.includes("create") || p.includes("write") || p.includes("mkdir") || p.includes("touch") ||
-    p.includes("kill") || p.includes("pkill") || p.includes("stop process") ||
-    p.includes("shell") || p.includes("command") || p.includes("run") || p.includes("sudo");
-
-  if (hasTaskKeyword) return true;
-
-  // If assistant responded with a plan block
-  if (assistantMsg) {
-    const content = assistantMsg.content;
-    if (content.includes("```json") || content.includes('"tool":') || content.includes('"steps":')) {
-      return true;
-    }
-  }
-
-  return false;
+/** Returns true if the assistant response indicates it ran tool calls */
+function responseHasToolCalls(content: string): boolean {
+  // Check for plan markers in content (summary lines with checkmarks)
+  return (
+    content.includes("✓ ") ||
+    content.includes("Task completed successfully") ||
+    content.includes("❌ Failed at step")
+  );
 }
 
+/** Infer task title from the prompt */
 function parseTask(prompt: string): { title: string; icon: string } {
   const p = prompt.toLowerCase().trim();
-  let title = "DESKTOP AGENT TASK";
-  let icon = "🤖";
-  
-  if (p.includes("update") || p.includes("upgrade")) {
-    title = "SYSTEM UPDATE";
-    icon = "🔄";
-  } else if (p.includes("install") || p.includes("pacman -s") || p.includes("yay -s")) {
-    title = "INSTALL PACKAGE";
-    icon = "📦";
-  } else if (p.includes("remove") || p.includes("uninstall") || p.includes("pacman -r")) {
-    title = "REMOVE PACKAGE";
-    icon = "🗑️";
-  } else if (p.includes("reboot") || p.includes("restart")) {
-    title = "SYSTEM REBOOT";
-    icon = "⚡";
-  } else if (p.includes("shutdown") || p.includes("poweroff")) {
-    title = "SYSTEM SHUTDOWN";
-    icon = "🔌";
-  } else if (p.includes("search") || p.includes("find") || p.includes("grep")) {
-    title = "FILE SEARCH";
-    icon = "🔍";
-  } else if (p.includes("open") || p.includes("launch") || p.includes("start")) {
-    title = "LAUNCH APPLICATION";
-    icon = "🚀";
-  } else if (p.includes("create") || p.includes("write") || p.includes("mkdir") || p.includes("touch")) {
-    title = "CREATE RESOURCE";
-    icon = "📁";
-  } else if (p.includes("kill") || p.includes("pkill") || p.includes("stop process")) {
-    title = "PROCESS TERMINATION";
-    icon = "🚫";
-  } else if (p.includes("shell") || p.includes("command") || p.includes("run") || p.includes("sudo") || p.includes("pkexec")) {
-    title = "SHELL EXECUTION";
-    icon = "🐚";
-  } else if (prompt.trim().length > 0) {
-    const words = prompt.trim().split(/\s+/).slice(0, 3).map(w => w.replace(/[^a-zA-Z]/g, "").toUpperCase()).filter(Boolean);
-    if (words.length > 0) {
-      title = words.join(" ");
-    }
-  }
-  
-  return { title, icon };
+
+  if (p.includes("update") || p.includes("upgrade")) return { title: "SYSTEM UPDATE", icon: "🔄" };
+  if (p.includes("install") || p.includes("pacman -s") || p.includes("yay -s")) return { title: "INSTALL PACKAGE", icon: "📦" };
+  if (p.includes("remove") || p.includes("uninstall")) return { title: "REMOVE PACKAGE", icon: "🗑️" };
+  if (p.includes("reboot") || p.includes("restart")) return { title: "SYSTEM REBOOT", icon: "⚡" };
+  if (p.includes("shutdown") || p.includes("poweroff")) return { title: "SYSTEM SHUTDOWN", icon: "🔌" };
+  if (p.includes("search") || p.includes("find") || p.includes("grep")) return { title: "FILE SEARCH", icon: "🔍" };
+  if (p.includes("open") || p.includes("launch") || p.includes("start")) return { title: "LAUNCH APP", icon: "🚀" };
+  if (p.includes("create") || p.includes("write") || p.includes("mkdir") || p.includes("touch")) return { title: "CREATE FILE", icon: "📁" };
+  if (p.includes("kill") || p.includes("pkill")) return { title: "KILL PROCESS", icon: "🚫" };
+  if (p.includes("shell") || p.includes("command") || p.includes("run") || p.includes("sudo")) return { title: "SHELL COMMAND", icon: "🐚" };
+  if (p.includes("chrome") || p.includes("firefox") || p.includes("browser")) return { title: "OPEN BROWSER", icon: "🌐" };
+  if (p.includes("type") || p.includes("click") || p.includes("press")) return { title: "UI AUTOMATION", icon: "🖱️" };
+
+  // Fallback: use first 3 meaningful words
+  const words = prompt.trim().split(/\s+/).slice(0, 3).map(w => w.replace(/[^a-zA-Z]/g, "").toUpperCase()).filter(Boolean);
+  return { title: words.join(" ") || "AGENT TASK", icon: "🤖" };
 }
 
-export function TaskList({ messages, voiceState, hasActivePlan }: TaskListProps) {
-  // Extract only agentic user messages
-  const agenticUserMessages = messages.filter((m) => {
-    if (m.role !== "user") return false;
-    
-    // Find corresponding assistant message
-    const userIdx = messages.findIndex((x) => x.id === m.id);
-    const nextAssistantMsg = messages.slice(userIdx + 1).find((x) => x.role === "assistant");
-    
-    return isAgenticTask(m, nextAssistantMsg);
-  });
+export function TaskList({
+  messages,
+  voiceState,
+  hasActivePlan,
+  currentPlan,
+  onScrollToMessage,
+  selectedTaskId,
+  setSelectedTaskId,
+  taskRefsMap,
+}: TaskListProps) {
 
-  const tasks: Task[] = agenticUserMessages.map((msg, index) => {
-    const { title, icon } = parseTask(msg.content);
-    const isLatest = index === agenticUserMessages.length - 1;
-    
-    let status: Task["status"] = "success";
-    if (isLatest) {
-      const latestUserMsgIndex = messages.findIndex((m) => m.id === msg.id);
-      const hasResponse = messages.slice(latestUserMsgIndex + 1).some((m) => m.role === "assistant");
-      
-      if (!hasResponse) {
-        if (voiceState === "processing" || voiceState === "speaking" || hasActivePlan) {
-          status = "running";
-        } else {
-          status = "pending";
+  // Derive agentic tasks from messages — a task is detected when the ASSISTANT replied with tool results
+  const agenticTasks: AgenticTask[] = [];
+
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    if (msg.role !== "user") continue;
+
+    // Find the next assistant response
+    const nextAssistant = messages.slice(i + 1).find(m => m.role === "assistant");
+    if (!nextAssistant) {
+      // Find the last user message index
+      let lastUserIdx = -1;
+      for (let j = messages.length - 1; j >= 0; j--) {
+        if (messages[j].role === "user") {
+          lastUserIdx = j;
+          break;
         }
       }
-    } else {
-      const currentIdx = messages.findIndex((m) => m.id === msg.id);
-      const nextMsgs = messages.slice(currentIdx + 1);
-      const nextAssistantMsg = nextMsgs.find((m) => m.role === "assistant");
-      if (nextAssistantMsg && (
-        nextAssistantMsg.content.toLowerCase().includes("error") || 
-        nextAssistantMsg.content.toLowerCase().includes("failed") ||
-        nextAssistantMsg.content.toLowerCase().includes("couldn't run")
-      )) {
-        status = "error";
+      // If we're processing and this is the last user message, it might be the active task
+      const isLatest = i === lastUserIdx;
+      if (isLatest && (voiceState === "processing" || hasActivePlan)) {
+        const { title, icon } = parseTask(msg.content);
+        // Only add it as running task if there's an active plan
+        if (hasActivePlan && currentPlan) {
+          agenticTasks.push({
+            id: msg.id,
+            userMsgId: msg.id,
+            title,
+            icon,
+            prompt: msg.content,
+            status: "running",
+            timestamp: msg.timestamp,
+            toolActions: currentPlan.steps.map(s => ({
+              tool: s.tool,
+              description: s.description || s.tool,
+              status: s.status || "pending",
+              result: s.result,
+            })),
+          });
+        }
+      }
+      continue;
+    }
+
+    // Check if the assistant response indicates tool calls were made
+    const isTask = responseHasToolCalls(nextAssistant.content);
+    if (!isTask) continue;
+
+    const { title, icon } = parseTask(msg.content);
+
+    // Determine status from assistant response
+    let status: AgenticTask["status"] = "success";
+    if (nextAssistant.content.includes("❌")) status = "error";
+
+    // Extract tool actions from assistant response (✓ lines)
+    const toolActions: AgenticTask["toolActions"] = [];
+    const lines = nextAssistant.content.split("\n");
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith("✓ ")) {
+        toolActions.push({ tool: "step", description: trimmed.slice(2), status: "success", timestamp: nextAssistant.timestamp });
+      } else if (trimmed.startsWith("❌")) {
+        toolActions.push({ tool: "step", description: trimmed, status: "error", timestamp: nextAssistant.timestamp });
       }
     }
 
-    return {
+    agenticTasks.push({
       id: msg.id,
+      userMsgId: msg.id,
       title,
       icon,
-      details: msg.content,
+      prompt: msg.content,
       status,
       timestamp: msg.timestamp,
-    };
-  });
-
-  if (tasks.length === 0) {
-    return (
-      <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", opacity: 0.5 }}>
-        <p style={{ color: "var(--text-secondary)", fontSize: "12px", letterSpacing: "0.05em", textAlign: "center" }}>
-          // NO ACTIVE TASKS
-        </p>
-      </div>
-    );
+      toolActions,
+    });
   }
 
-  // Reverse list so latest active task is at the top!
-  const reversedTasks = [...tasks].reverse();
+  // Current running task (from live plan)
+  const selectedTask = agenticTasks.find(t => t.id === selectedTaskId);
+  const liveToolActions = selectedTask?.status === "running" && currentPlan
+    ? currentPlan.steps.map(s => ({
+        tool: s.tool,
+        description: s.description || s.tool,
+        status: s.status || "pending" as const,
+        result: s.result,
+        timestamp: s.timestamp,
+      }))
+    : selectedTask?.toolActions ?? [];
+
+  // Auto-select latest running task
+  useEffect(() => {
+    const running = agenticTasks.find(t => t.status === "running");
+    if (running) setSelectedTaskId(running.id);
+  }, [hasActivePlan]);
+
+  const reversedTasks = [...agenticTasks].reverse();
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-      {reversedTasks.map((task) => (
-        <motion.div
-          key={task.id}
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          style={{
-            padding: "10px 12px",
-            borderRadius: "var(--radius-md)",
-            border: `1px solid ${task.status === "running" ? "var(--border-accent)" : "var(--border)"}`,
-            background: task.status === "running" ? "var(--accent-glow)" : "rgba(0, 0, 0, 0.2)",
-            display: "flex",
-            flexDirection: "column",
-            gap: "6px",
-            position: "relative",
-            overflow: "hidden",
-            boxShadow: task.status === "running" ? "0 0 10px rgba(255, 0, 0, 0.15)" : "none",
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: "bold", fontSize: "12px", color: "var(--text-primary)" }}>
-              <span>{task.icon}</span>
-              <span style={{ letterSpacing: "0.05em" }}>{task.title}</span>
-            </div>
-            
-            {/* Status indicator */}
-            <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-              {task.status === "running" && (
-                <span style={{ fontSize: "10px", color: "var(--accent)", display: "flex", alignItems: "center", gap: "4px", fontWeight: "bold" }}>
-                  <Loader2 size={12} className="animate-spin" />
-                  RUNNING
-                </span>
-              )}
-              {task.status === "success" && (
-                <span style={{ fontSize: "10px", color: "var(--success)", display: "flex", alignItems: "center", gap: "4px", fontWeight: "bold" }}>
-                  <CheckCircle2 size={12} />
-                  COMPLETED
-                </span>
-              )}
-              {task.status === "error" && (
-                <span style={{ fontSize: "10px", color: "var(--danger)", display: "flex", alignItems: "center", gap: "4px", fontWeight: "bold" }}>
-                  <XCircle size={12} />
-                  FAILED
-                </span>
-              )}
-              {task.status === "pending" && (
-                <span style={{ fontSize: "10px", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "4px" }}>
-                  <Clock size={12} />
-                  QUEUED
-                </span>
-              )}
-            </div>
-          </div>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+      {agenticTasks.length === 0 ? (
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", opacity: 0.5 }}>
+          <p style={{ color: "var(--text-secondary)", fontSize: "11px", letterSpacing: "0.05em", textAlign: "center" }}>
+            // NO AGENT RUNS YET
+          </p>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px", overflowY: "auto", flex: 1 }}>
+          {reversedTasks.map((task) => (
+            <motion.div
+              key={task.id}
+              ref={(el) => {
+                if (taskRefsMap) taskRefsMap.current[task.id] = el as HTMLDivElement;
+              }}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              onClick={() => {
+                setSelectedTaskId(task.id === selectedTaskId ? null : task.id);
+                onScrollToMessage?.(task.userMsgId);
+              }}
+              style={{
+                padding: "9px 11px",
+                borderRadius: "var(--radius-md)",
+                border: `1px solid ${task.id === selectedTaskId ? "var(--border-accent)" : task.status === "running" ? "var(--border-accent)" : "var(--border)"}`,
+                background: task.id === selectedTaskId
+                  ? "var(--accent-glow)"
+                  : task.status === "running"
+                  ? "var(--accent-glow)"
+                  : "rgba(0,0,0,0.2)",
+                display: "flex",
+                flexDirection: "column",
+                gap: "5px",
+                cursor: "pointer",
+                boxShadow: task.status === "running" ? "0 0 8px var(--accent-glow)" : "none",
+                transition: "all 0.15s",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "7px", fontWeight: "bold", fontSize: "11px", color: "var(--text-primary)" }}>
+                  <span>{task.icon}</span>
+                  <span style={{ letterSpacing: "0.04em" }}>{task.title}</span>
+                  <span style={{ fontSize: "9px", color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontWeight: "normal", opacity: 0.8 }}>
+                    [{new Date(task.timestamp ?? Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}]
+                  </span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                  {task.status === "running" && (
+                    <span style={{ fontSize: "9px", color: "var(--accent)", display: "flex", alignItems: "center", gap: "3px", fontWeight: "bold" }}>
+                      <Loader2 size={10} className="animate-spin" /> RUNNING
+                    </span>
+                  )}
+                  {task.status === "success" && (
+                    <span style={{ fontSize: "9px", color: "var(--success)", display: "flex", alignItems: "center", gap: "3px" }}>
+                      <CheckCircle2 size={10} /> DONE
+                    </span>
+                  )}
+                  {task.status === "error" && (
+                    <span style={{ fontSize: "9px", color: "var(--danger)", display: "flex", alignItems: "center", gap: "3px" }}>
+                      <XCircle size={10} /> FAILED
+                    </span>
+                  )}
+                  {task.status === "pending" && (
+                    <span style={{ fontSize: "9px", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "3px" }}>
+                      <Clock size={10} /> QUEUED
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div style={{ fontSize: "10px", color: "var(--text-secondary)", fontFamily: "var(--font-mono)", opacity: 0.75, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {task.prompt}
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      )}
 
-          <div style={{ fontSize: "11px", color: "var(--text-secondary)", wordBreak: "break-word", fontFamily: "var(--font-mono)", textTransform: "uppercase", opacity: 0.8 }}>
-            {task.details}
-          </div>
-        </motion.div>
-      ))}
+      {/* Tool calls panel for selected task */}
+      <AnimatePresence>
+        {selectedTask && liveToolActions.length > 0 && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            style={{
+              borderTop: "1px solid var(--border)",
+              marginTop: "8px",
+              paddingTop: "8px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "4px",
+              maxHeight: "180px",
+              overflowY: "auto",
+            }}
+          >
+            <div style={{ fontSize: "9px", color: "var(--text-muted)", letterSpacing: "0.06em", marginBottom: "4px", display: "flex", alignItems: "center", gap: "4px" }}>
+              <Zap size={9} /> TOOL CALLS ({liveToolActions.length})
+            </div>
+            {[...liveToolActions].reverse().map((action, idx) => (
+              <div
+                key={idx}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "4px 7px",
+                  borderRadius: "2px",
+                  background: action.status === "running"
+                    ? "var(--accent-glow)"
+                    : action.status === "success"
+                    ? "rgba(0,230,180,0.07)"
+                    : action.status === "error"
+                    ? "rgba(255,60,60,0.07)"
+                    : "rgba(255,255,255,0.03)",
+                  border: `1px solid ${
+                    action.status === "running" ? "var(--border-accent)" :
+                    action.status === "success" ? "rgba(0,230,180,0.2)" :
+                    action.status === "error" ? "rgba(255,60,60,0.2)" :
+                    "var(--border)"
+                  }`,
+                  fontSize: "10px",
+                  fontFamily: "var(--font-mono)",
+                }}
+              >
+                {action.status === "running" && <Loader2 size={9} className="animate-spin" style={{ color: "var(--accent)", flexShrink: 0 }} />}
+                {action.status === "success" && <CheckCircle2 size={9} style={{ color: "var(--success)", flexShrink: 0 }} />}
+                {action.status === "error" && <XCircle size={9} style={{ color: "var(--danger)", flexShrink: 0 }} />}
+                {(action.status === "pending" || action.status === "skipped") && <ChevronRight size={9} style={{ color: "var(--text-muted)", flexShrink: 0 }} />}
+                <span style={{ color: "var(--accent)", flexShrink: 0, fontSize: "9px" }}>{action.tool}</span>
+                <span style={{ color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+                  {action.description}
+                </span>
+                {action.timestamp && (
+                  <span style={{ fontSize: "8.5px", color: "var(--text-muted)", fontFamily: "var(--font-mono)", opacity: 0.7, flexShrink: 0, marginLeft: "6px" }}>
+                    {new Date(action.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
+                  </span>
+                )}
+              </div>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
