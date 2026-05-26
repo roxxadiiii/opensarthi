@@ -41,11 +41,9 @@ const PROVIDER_MODELS: Record<string, { value: string; label: string }[]> = {
     { value: "mistralai/mistral-large", label: "Mistral Large (via OR)" },
   ],
   ollama: [],
-  local_llm: [],
 };
 
 const PROVIDER_LABELS: Record<string, { label: string; icon: string; apiKeyLabel: string; apiKeyPlaceholder: string; docsUrl: string }> = {
-  local_llm: { label: "Local LLM (No API)", icon: "🏠", apiKeyLabel: "", apiKeyPlaceholder: "", docsUrl: "" },
   ollama:    { label: "Ollama (Local)", icon: "🦙", apiKeyLabel: "", apiKeyPlaceholder: "", docsUrl: "" },
   google:    { label: "Google Gemini", icon: "✨", apiKeyLabel: "GOOGLE AI API KEY", apiKeyPlaceholder: "AIza...", docsUrl: "https://aistudio.google.com/apikey" },
   openai:    { label: "OpenAI", icon: "🤖", apiKeyLabel: "OPENAI API KEY", apiKeyPlaceholder: "sk-...", docsUrl: "https://platform.openai.com/api-keys" },
@@ -185,7 +183,7 @@ export function SettingsView({
 
   const providerInfo = PROVIDER_LABELS[provider] || PROVIDER_LABELS.google;
   const modelOptions = PROVIDER_MODELS[provider] || [];
-  const isLocal = provider === "local_llm" || provider === "ollama";
+  const isLocal = provider === "ollama";
 
   // When provider changes, reset to first model of new provider
   useEffect(() => {

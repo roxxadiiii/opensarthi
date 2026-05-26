@@ -114,6 +114,11 @@ export function useWebSocket(port: number | null) {
         updateStepStatus(index, { status: "error", error, timestamp: Date.now() });
       }),
 
+      wsClient.on("tool_terminated", (msg) => {
+        const { index } = msg.payload as { index: number };
+        updateStepStatus(index, { status: "terminated", timestamp: Date.now() });
+      }),
+
       wsClient.on("assistant_response", (msg) => {
         const message = MessageSchema.parse(msg.payload);
         addMessage(message);
@@ -221,6 +226,14 @@ export function useWebSocket(port: number | null) {
       wsClient.on("error", (msg) => {
         console.error("[Runtime error]", msg.payload);
         setVoiceState("error");
+      }),
+
+      wsClient.on("task_paused", () => {
+        useAssistantStore.getState().setTaskPaused(true);
+      }),
+
+      wsClient.on("task_resumed", () => {
+        useAssistantStore.getState().setTaskPaused(false);
       }),
     ];
 

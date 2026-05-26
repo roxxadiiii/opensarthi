@@ -21,7 +21,38 @@ class AgentRuntime:
         self.deps = deps
         self.state = AgentStateContext()
         self._cancel_requested = False
+        self._paused = False
+        self._pause_event = asyncio.Event()
+        self._pause_event.set()  # starts unpaused (set = unblocked)
         self.last_usage = None
+
+    def pause(self):
+        """Pause execution at the next safe checkpoint."""
+        self._paused = True
+        self._pause_event.clear()  # block the gate
+
+    def resume(self):
+        """Resume a paused execution."""
+        self._paused = False
+        self._pause_event.set()  # unblock the gate
+
+    async def _check_pause(self):
+        """Suspend here if paused; returns immediately when running or cancelled."""
+        await self._pause_event.wait()
+
+    def _format_final_response(self, response: str, completed_actions: list, failed_actions: list) -> str:
+        if not completed_actions and not failed_actions:
+            return response
+        
+        lines = [response, ""]
+        for action in completed_actions:
+            cleaned = action.lstrip("✓ ").strip()
+            lines.append(f"✓ {cleaned}")
+        for action in failed_actions:
+            cleaned = action.lstrip("❌ ").strip()
+            lines.append(f"❌ {cleaned}")
+        
+        return "\n".join(lines)
 
     async def run(self, goal: str, model, message_history: list) -> str:
         """
@@ -30,6 +61,8 @@ class AgentRuntime:
         Returns the final response string.
         """
         self._cancel_requested = False
+        self._paused = False
+        self._pause_event.set()  # ensure unpaused for this run
         self.state = AgentStateContext(current_goal=goal)
         self.last_usage = None
 
@@ -41,6 +74,12 @@ class AgentRuntime:
         try:
             while replanning_attempts < max_replanning_attempts:
                 if self._cancel_requested:
+                    await self._transition(AgentState.IDLE)
+                    return "Execution cancelled by user."
+
+                # Pause gate — block here if paused, resume when unpaused
+                await self._check_pause()
+                if self._cancel_requested:  # may have been cancelled while paused
                     await self._transition(AgentState.IDLE)
                     return "Execution cancelled by user."
 
@@ -75,7 +114,7 @@ class AgentRuntime:
                     # Conversational response (no tool steps), meaning the agent thinks it is done or cannot proceed.
                     response = text_response or "I couldn't generate a plan or a response."
                     await self._transition(AgentState.COMPLETE)
-                    return response
+                    return self._format_final_response(response, completed_actions, failed_actions)
 
                 # Send plan creation details to client
                 import uuid
@@ -104,6 +143,8 @@ class AgentRuntime:
                 plan_failed = False
                 for i, step in enumerate(plan.steps):
                     if self._cancel_requested:
+                        for remain_idx in range(i, len(plan.steps)):
+                            await self.ws.send_message("tool_terminated", {"index": remain_idx})
                         break
 
                     await self._transition(
@@ -117,10 +158,15 @@ class AgentRuntime:
                     step_success = False
                     self.state.retry_count = 0
                     while self.state.retry_count <= self.state.max_retries:
+                        # Pause gate before each step (safe checkpoint between steps)
+                        await self._check_pause()
                         if self._cancel_requested:
                             break
 
                         result = await self._execute_step(step, i)
+
+                        if self._cancel_requested:
+                            break
 
                         if result.success:
                             # Verify post-condition if specified
@@ -152,6 +198,11 @@ class AgentRuntime:
                                 # Step failed permanently or max retries reached
                                 break
 
+                    if self._cancel_requested:
+                        for remain_idx in range(i, len(plan.steps)):
+                            await self.ws.send_message("tool_terminated", {"index": remain_idx})
+                        break
+
                     if step_success:
                         completed_actions.append(step.description or f"Executed tool: {step.tool}")
                         # Brief wait after step if specified
@@ -163,6 +214,11 @@ class AgentRuntime:
                         failed_actions.append(f"{step.description or step.tool} (Reason: {result.error})")
                         plan_failed = True
                         break
+
+                if self._cancel_requested:
+                    await self._transition(AgentState.IDLE)
+                    response = "Execution cancelled by user."
+                    return self._format_final_response(response, completed_actions, failed_actions + [f"{s.description or s.tool} (Reason: Terminated)" for s in plan.steps[i:]])
 
                 if plan_failed:
                     replanning_attempts += 1
@@ -204,12 +260,13 @@ Please explain to the user in a friendly, conversational manner why the task cou
 """
             try:
                 result = await self.agent.run(final_error_context, deps=self.deps, model=model, message_history=message_history)
-                return result.output
+                return self._format_final_response(result.output, completed_actions, failed_actions)
             except Exception:
-                return f"❌ Failed to complete the task.\n\nCompleted steps:\n" + \
-                       "\n".join(f"- {a}" for a in completed_actions) + \
-                       "\n\nFailed steps:\n" + \
-                       "\n".join(f"- {f}" for f in failed_actions)
+                err_res = f"❌ Failed to complete the task.\n\nCompleted steps:\n" + \
+                          "\n".join(f"- {a}" for a in completed_actions) + \
+                          "\n\nFailed steps:\n" + \
+                          "\n".join(f"- {f}" for f in failed_actions)
+                return self._format_final_response(err_res, completed_actions, failed_actions)
 
         except asyncio.CancelledError:
             await self._transition(AgentState.IDLE)
@@ -421,3 +478,4 @@ Please explain to the user in a friendly, conversational manner why the task cou
     def request_cancel(self):
         """Signal the execution loop to stop after the current step."""
         self._cancel_requested = True
+        self._pause_event.set()  # unblock pause gate so cancel can take effect

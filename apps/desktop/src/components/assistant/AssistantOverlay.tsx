@@ -23,7 +23,7 @@ export function AssistantOverlay({ onOpenSettings, onOpenHistory, onNewChat }: A
   const {
     voiceState, isConnected, currentTranscript,
     messages, currentPlan, activeLocalModel, activeCloudModel, activeProvider,
-    tokenUsage,
+    tokenUsage, taskPaused,
     setVoiceState, addMessage, clearMessages
   } = useAssistantStore();
 
@@ -226,11 +226,42 @@ export function AssistantOverlay({ onOpenSettings, onOpenHistory, onNewChat }: A
     return time.toLocaleTimeString('en-US', { hour12: false });
   };
 
-  const handleNewChat = () => {
+  const handleNewThread = () => {
     clearMessages();
     onNewChat?.();
     wsClient.send("new_chat", {}); // Let backend generate a new thread
   };
+
+  const getThreadTitle = () => {
+    const firstUserMsg = messages.find(m => m.role === "user");
+    if (!firstUserMsg) return "// ACTIVE THREAD - EMPTY";
+
+    const prompt = firstUserMsg.content;
+    const p = prompt.toLowerCase().trim();
+
+    let title = "ACTIVE THREAD";
+    if (p.includes("update") || p.includes("upgrade")) title = "SYSTEM UPDATE";
+    else if (p.includes("install") || p.includes("pacman -s") || p.includes("yay -s")) title = "INSTALL PACKAGE";
+    else if (p.includes("remove") || p.includes("uninstall")) title = "REMOVE PACKAGE";
+    else if (p.includes("reboot") || p.includes("restart")) title = "SYSTEM REBOOT";
+    else if (p.includes("shutdown") || p.includes("poweroff")) title = "SYSTEM SHUTDOWN";
+    else if (p.includes("search") || p.includes("find") || p.includes("grep")) title = "FILE SEARCH";
+    else if (p.includes("open") || p.includes("launch") || p.includes("start")) title = "LAUNCH APP";
+    else if (p.includes("create") || p.includes("write") || p.includes("mkdir") || p.includes("touch")) title = "CREATE FILE";
+    else if (p.includes("kill") || p.includes("pkill")) title = "KILL PROCESS";
+    else if (p.includes("shell") || p.includes("command") || p.includes("run") || p.includes("sudo")) title = "SHELL COMMAND";
+    else if (p.includes("chrome") || p.includes("firefox") || p.includes("browser")) title = "OPEN BROWSER";
+    else if (p.includes("type") || p.includes("click") || p.includes("press")) title = "UI AUTOMATION";
+    else if (p.includes("brightness") || p.includes("volume") || p.includes("screen")) title = "SYSTEM CONTROL";
+    else {
+      const words = prompt.trim().split(/\s+/).slice(0, 3).map(w => w.replace(/[^a-zA-Z]/g, "").toUpperCase()).filter(Boolean);
+      title = words.join(" ") || "AGENT RUN";
+    }
+
+    return `// THREAD: ${title}`;
+  };
+
+  const isTaskRunning = !!currentPlan;
 
   return (
     <div
@@ -256,10 +287,10 @@ export function AssistantOverlay({ onOpenSettings, onOpenHistory, onNewChat }: A
           </span>
         </div>
         <div style={{ display: "flex", gap: "8px" }}>
-          <button onClick={onOpenHistory} title="History" style={{ padding: "4px 8px" }}>
+          <button onClick={onOpenHistory} title="Past Threads" style={{ padding: "4px 8px" }}>
             <History size={14} />
           </button>
-          <button onClick={handleNewChat} title="New Chat" style={{ padding: "4px 8px" }}>
+          <button onClick={handleNewThread} title="New Thread" style={{ padding: "4px 8px" }}>
             <MessageSquarePlus size={14} />
           </button>
           <button onClick={onOpenSettings} title="Settings" style={{ padding: "4px 8px" }}>
@@ -280,7 +311,7 @@ export function AssistantOverlay({ onOpenSettings, onOpenHistory, onNewChat }: A
           {/* LEFT PANEL */}
           <div style={{ width: `${leftWidth}px`, flexShrink: 0, display: "flex", flexDirection: "column", gap: "16px" }}>
             <div className="hud-panel" style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-              <div className="hud-panel-title">// AGENT RUNS</div>
+              <div className="hud-panel-title">// AGENT TASKS</div>
               <div style={{ padding: "10px", overflowY: "auto", flex: 1, display: "flex", flexDirection: "column" }}>
                 <TaskList
                   messages={messages}
@@ -301,18 +332,17 @@ export function AssistantOverlay({ onOpenSettings, onOpenHistory, onNewChat }: A
                 />
               </div>
             </div>
-            <div className="hud-panel" style={{ height: "220px", display: "flex", flexDirection: "column", flexShrink: 0 }}>
+            <div className="hud-panel" style={{ height: "170px", display: "flex", flexDirection: "column", flexShrink: 0 }}>
               <div className="hud-panel-title">// AGENT STATUS & SYSTEMS</div>
               <div style={{ padding: "12px", fontSize: "12px", color: "var(--text-secondary)", flex: 1, display: "flex", flexDirection: "column", gap: "6px" }}>
                 <div>PROVIDER: <span style={{ color: "var(--text-primary)", fontFamily: "var(--font-mono)", textTransform: "uppercase" }}>{activeProvider}</span></div>
-                <div>LOCAL LLM: <span style={{ color: "var(--text-primary)", fontFamily: "var(--font-mono)" }}>{activeLocalModel}</span></div>
-                <div>CLOUD LLM: <span style={{ color: "var(--accent)", fontFamily: "var(--font-mono)" }}>{activeCloudModel}</span></div>
+                <div>LLM: <span style={{ color: "var(--accent)", fontFamily: "var(--font-mono)", textTransform: "uppercase" }}>{activeProvider === "ollama" ? activeLocalModel : activeCloudModel}</span></div>
                 <div style={{ borderTop: "1px dashed rgba(255,255,255,0.08)", marginTop: "4px", paddingTop: "4px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between" }}>
                     <span>TOKEN USAGE:</span>
                     <span style={{ color: "var(--text-primary)", fontFamily: "var(--font-mono)" }}>{tokenUsage.totalTokens}</span>
                   </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", opacity: 0.8 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px" }}>
                     <span>SESSION TOTAL:</span>
                     <span style={{ color: "var(--accent)", fontFamily: "var(--font-mono)" }}>{tokenUsage.sessionTotalTokens}</span>
                   </div>
@@ -354,6 +384,7 @@ export function AssistantOverlay({ onOpenSettings, onOpenHistory, onNewChat }: A
 
           {/* CENTER PANEL */}
           <div className="hud-panel" style={{ flex: "1 1 0%", minWidth: "320px", display: "flex", flexDirection: "column" }}>
+            <div className="hud-panel-title">{getThreadTitle()}</div>
             <div style={{
               position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
               opacity: 0.05, pointerEvents: "none", display: "flex", flexDirection: "column", alignItems: "center"
@@ -407,32 +438,49 @@ export function AssistantOverlay({ onOpenSettings, onOpenHistory, onNewChat }: A
             {/* INPUT BAR */}
             <div style={{
               padding: "16px", borderTop: "1px solid var(--border)",
-              display: "flex", alignItems: "center", gap: "16px", background: "rgba(0,0,0,0.4)", zIndex: 1
+              display: "flex", flexDirection: "column", gap: "0px", background: "rgba(0,0,0,0.4)", zIndex: 1
             }}>
-              <VoiceButton voiceState={voiceState} onClick={handleVoiceClick} disabled={!isConnected} />
-              <Waveform voiceState={voiceState} />
-              <input
-                value={textInput}
-                onChange={(e) => setTextInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={isConnected ? "ENTER COMMAND..." : "CONNECTING..."}
-                disabled={!isConnected}
-                style={{
-                  flex: 1, background: "transparent", border: "none", borderBottom: "1px solid var(--border-accent)",
-                  color: "var(--text-primary)", fontSize: "14px", fontFamily: "var(--font-mono)",
-                  padding: "8px 4px", outline: "none"
-                }}
-              />
-              <button
-                onClick={handleTextSend}
-                disabled={!textInput.trim() || !isConnected}
-                style={{
-                  padding: "8px 16px", background: "var(--accent)", color: "#000", border: "none",
-                  fontWeight: "bold", opacity: (!textInput.trim() || !isConnected) ? 0.4 : 1
-                }}
-              >
-                <Send size={16} />
-              </button>
+              {/* Task running indicator */}
+              {isTaskRunning && (
+                <div style={{
+                  display: "flex", alignItems: "center", gap: "6px",
+                  padding: "6px 8px", marginBottom: "8px",
+                  background: taskPaused ? "rgba(255,180,0,0.08)" : "rgba(var(--accent-rgb, 255,60,60),0.08)",
+                  border: `1px solid ${taskPaused ? "rgba(255,180,0,0.2)" : "rgba(var(--accent-rgb, 255,60,60),0.15)"}`,
+                  borderRadius: "var(--radius-sm)",
+                  fontSize: "10px", fontWeight: "bold", letterSpacing: "0.06em",
+                  color: taskPaused ? "hsl(40, 100%, 60%)" : "var(--accent)",
+                }}>
+                  {taskPaused ? "⏸ TASK PAUSED" : "⚡ TASK IN PROGRESS — INPUT LOCKED"}
+                </div>
+              )}
+              <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+                <VoiceButton voiceState={voiceState} onClick={handleVoiceClick} disabled={!isConnected} />
+                <Waveform voiceState={voiceState} />
+                <input
+                  value={textInput}
+                  onChange={(e) => setTextInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder={!isConnected ? "CONNECTING..." : isTaskRunning ? "TASK RUNNING..." : "ENTER COMMAND..."}
+                  disabled={!isConnected || isTaskRunning}
+                  style={{
+                    flex: 1, background: "transparent", border: "none", borderBottom: "1px solid var(--border-accent)",
+                    color: "var(--text-primary)", fontSize: "14px", fontFamily: "var(--font-mono)",
+                    padding: "8px 4px", outline: "none",
+                    opacity: isTaskRunning ? 0.4 : 1,
+                  }}
+                />
+                <button
+                  onClick={handleTextSend}
+                  disabled={!textInput.trim() || !isConnected || isTaskRunning}
+                  style={{
+                    padding: "8px 16px", background: "var(--accent)", color: "#000", border: "none",
+                    fontWeight: "bold", opacity: (!textInput.trim() || !isConnected || isTaskRunning) ? 0.4 : 1
+                  }}
+                >
+                  <Send size={16} />
+                </button>
+              </div>
             </div>
           </div>
 

@@ -23,13 +23,13 @@ export function HistoryView({ onClose }: HistoryViewProps) {
 
   const handleDeleteThread = (e: React.MouseEvent, id: string) => {
     e.stopPropagation(); // Avoid triggering load thread
-    if (window.confirm("Are you sure you want to delete this conversation?")) {
+    if (window.confirm("Are you sure you want to delete this thread?")) {
       wsClient.send("delete_thread", { thread_id: id });
     }
   };
 
   const handleDeleteAll = () => {
-    if (window.confirm("Are you sure you want to delete ALL conversations? This cannot be undone.")) {
+    if (window.confirm("Are you sure you want to delete ALL threads? This cannot be undone.")) {
       wsClient.send("delete_all_threads", {});
     }
   };
@@ -56,14 +56,14 @@ export function HistoryView({ onClose }: HistoryViewProps) {
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <h2 style={{ fontSize: "16px", color: "var(--accent)", letterSpacing: "0.1em", fontWeight: "bold" }}>
-            // CONVERSATION HISTORY
+            // PAST THREADS
           </h2>
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
             {threads.length > 0 && (
               <button
                 id="delete-all-threads"
                 onClick={handleDeleteAll}
-                title="Delete all conversations"
+                title="Delete all threads"
                 style={{
                   color: "var(--text-secondary)",
                   background: "transparent",
@@ -86,7 +86,7 @@ export function HistoryView({ onClose }: HistoryViewProps) {
         <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: "10px" }}>
           {threads.length === 0 ? (
             <div style={{ color: "var(--text-secondary)", fontSize: "13px", textAlign: "center", marginTop: "40px" }}>
-              NO PAST CONVERSATIONS FOUND
+              NO PAST THREADS FOUND
             </div>
           ) : (
             threads.map((thread) => (
@@ -127,7 +127,7 @@ export function HistoryView({ onClose }: HistoryViewProps) {
                   <button
                     className="delete-thread-btn"
                     onClick={(e) => handleDeleteThread(e, thread.id)}
-                    title="Delete conversation"
+                    title="Delete thread"
                     style={{
                       position: "absolute",
                       right: "12px",

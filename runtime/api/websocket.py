@@ -141,8 +141,9 @@ class Session:
             model_name = settings.cloud_model.lower()
             api_key = get_active_api_key()
 
+            is_cloud = True
             # --- Build the active model based on selected provider ---
-            if provider == "local_llm" or provider == "ollama":
+            if provider == "ollama":
                 from pydantic_ai.models.ollama import OllamaModel
                 active_model = OllamaModel(settings.local_model)
                 is_cloud = False
@@ -151,13 +152,11 @@ class Session:
                     os.environ["GEMINI_API_KEY"] = api_key
                 from pydantic_ai.models.gemini import GeminiModel
                 active_model = GeminiModel(settings.cloud_model)
-                is_cloud = True
             elif provider == "anthropic":
                 if api_key:
                     os.environ["ANTHROPIC_API_KEY"] = api_key
                 from pydantic_ai.models.anthropic import AnthropicModel
                 active_model = AnthropicModel(settings.cloud_model)
-                is_cloud = True
             elif provider == "groq":
                 if api_key:
                     os.environ["GROQ_API_KEY"] = api_key
@@ -171,7 +170,6 @@ class Session:
                         api_key=api_key or "noop",
                     )
                 )
-                is_cloud = True
             elif provider == "openai":
                 if api_key:
                     os.environ["OPENAI_API_KEY"] = api_key
@@ -184,7 +182,6 @@ class Session:
                         api_key=api_key or "noop",
                     )
                 )
-                is_cloud = True
             elif provider == "openrouter":
                 if api_key:
                     os.environ["OPENROUTER_API_KEY"] = api_key
@@ -197,23 +194,8 @@ class Session:
                         api_key=api_key or "noop",
                     )
                 )
-                is_cloud = True
             else:
-                # Fallback: try to detect from model name (backward compatibility)
-                if "gemini" in model_name:
-                    if api_key:
-                        os.environ["GEMINI_API_KEY"] = api_key
-                    from pydantic_ai.models.gemini import GeminiModel
-                    active_model = GeminiModel(settings.cloud_model)
-                elif "claude" in model_name:
-                    if api_key:
-                        os.environ["ANTHROPIC_API_KEY"] = api_key
-                    from pydantic_ai.models.anthropic import AnthropicModel
-                    active_model = AnthropicModel(settings.cloud_model)
-                else:
-                    from pydantic_ai.models.ollama import OllamaModel
-                    active_model = OllamaModel(settings.local_model)
-                is_cloud = "gemini" in model_name or "claude" in model_name
+                raise Exception(f"Unsupported AI provider: {provider}")
 
             from pydantic_ai.messages import ModelRequest, ModelResponse, UserPromptPart, TextPart
             
@@ -249,35 +231,9 @@ class Session:
                     message_history=message_history
                 )
                 usage = runtime.last_usage
-            except Exception as cloud_err:
-                if not is_cloud:
-                    raise cloud_err
-                
-                err_type = type(cloud_err).__name__
-                err_detail = str(cloud_err).strip() or err_type
-                logger.warning("Cloud agent execution failed, falling back to local model...", error=err_detail)
-                
-                try:
-                    from pydantic_ai.models.ollama import OllamaModel
-                    from agent_runtime import AgentRuntime
-                    from observation import DesktopObserver
-                    
-                    local_model = OllamaModel(settings.local_model)
-                    local_observer = DesktopObserver()
-                    local_runtime = AgentRuntime(ws_handler=self, agent=agent, observer=local_observer, deps=self.deps)
-                    
-                    final_output = await local_runtime.run(
-                        goal=text,
-                        model=local_model,
-                        message_history=message_history
-                    )
-                    usage = local_runtime.last_usage
-                except Exception as local_err:
-                    logger.error("Local agent fallback failed", error=str(local_err))
-                    raise Exception(f"Cloud failed ({err_detail}) AND local fallback failed ({str(local_err)})")
-                
-                prefix_warning = f"⚠️ **Cloud API Timeout** — fell back to local model `{settings.local_model}`\n\n"
-                final_output = prefix_warning + final_output
+            except Exception as e:
+                logger.error("Agent execution failed", error=str(e))
+                raise e
 
             # Extract token usage
             try:
@@ -347,6 +303,16 @@ class Session:
                     "retry_count": 0,
                     "error": None
                 })
+        elif msg_type == "pause_execution":
+            if hasattr(self, '_current_runtime') and self._current_runtime:
+                self._current_runtime.pause()
+                await self.send_message("task_paused", {})
+                logger.info("Task execution paused")
+        elif msg_type == "resume_execution":
+            if hasattr(self, '_current_runtime') and self._current_runtime:
+                self._current_runtime.resume()
+                await self.send_message("task_resumed", {})
+                logger.info("Task execution resumed")
         elif msg_type == "permission_response":
             if hasattr(self, 'pending_input') and self.pending_input and not self.pending_input.done():
                 self.pending_input.set_result(payload)

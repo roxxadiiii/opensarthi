@@ -36,7 +36,8 @@ export function ActionLog({ plan, selectedTaskId, messages }: ActionLogProps) {
 
     const isTask = nextAssistant.content.includes("✓ ") ||
                    nextAssistant.content.includes("Task completed successfully") ||
-                   nextAssistant.content.includes("❌ Failed at step");
+                   nextAssistant.content.includes("❌ Failed at step") ||
+                   nextAssistant.content.includes("Execution cancelled by user.");
     if (!isTask) continue;
 
     const toolActions: any[] = [];
@@ -46,13 +47,22 @@ export function ActionLog({ plan, selectedTaskId, messages }: ActionLogProps) {
       if (trimmed.startsWith("✓ ")) {
         toolActions.push({ tool: "step", description: trimmed.slice(2), status: "success", timestamp: nextAssistant.timestamp });
       } else if (trimmed.startsWith("❌")) {
-        toolActions.push({ tool: "step", description: trimmed, status: "error", timestamp: nextAssistant.timestamp });
+        const cleanDesc = trimmed.startsWith("❌ ") ? trimmed.slice(2) : trimmed.slice(1);
+        const stepStatus = cleanDesc.includes("(Reason: Terminated)") ? "terminated" : "error";
+        toolActions.push({ tool: "step", description: cleanDesc, status: stepStatus, timestamp: nextAssistant.timestamp });
       }
+    }
+
+    let taskStatus = "success";
+    if (nextAssistant.content.includes("Execution cancelled by user.")) {
+      taskStatus = "terminated";
+    } else if (nextAssistant.content.includes("❌")) {
+      taskStatus = "error";
     }
 
     agenticTasks.push({
       id: msg.id,
-      status: nextAssistant.content.includes("❌") ? "error" : "success",
+      status: taskStatus,
       toolActions,
     });
   }
@@ -103,6 +113,7 @@ export function ActionLog({ plan, selectedTaskId, messages }: ActionLogProps) {
         const isRunning = action.status === "running";
         const isSuccess = action.status === "success";
         const isError = action.status === "error" || action.status === "failed";
+        const isTerminated = action.status === "terminated";
         
         let statusColor = "var(--text-muted)";
         let statusText = "QUEUED";
@@ -126,6 +137,11 @@ export function ActionLog({ plan, selectedTaskId, messages }: ActionLogProps) {
           statusText = "FAILED";
           cardBg = "rgba(255, 60, 60, 0.04)";
           cardBorder = "1px solid rgba(255, 60, 60, 0.15)";
+        } else if (isTerminated) {
+          statusColor = "var(--text-muted)";
+          statusText = "TERMINATED";
+          cardBg = "rgba(255, 255, 255, 0.02)";
+          cardBorder = "1px solid rgba(255, 255, 255, 0.08)";
         }
 
         return (

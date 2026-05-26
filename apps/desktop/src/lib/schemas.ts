@@ -32,6 +32,12 @@ export const WSMessageTypeSchema = z.enum([
   "input_response",
   "delete_thread",
   "delete_all_threads",
+  "cancel_execution",
+  "pause_execution",
+  "resume_execution",
+  "task_paused",
+  "task_resumed",
+  "tool_terminated",
 ]);
 export type WSMessageType = z.infer<typeof WSMessageTypeSchema>;
 
@@ -50,7 +56,7 @@ export const PlanStepSchema = z.object({
   tool: z.string(),
   args: z.record(z.unknown()),
   description: z.string(),
-  status: z.enum(["pending", "running", "success", "error", "skipped"]),
+  status: z.enum(["pending", "running", "success", "error", "skipped", "terminated"]),
   error: z.string().optional(),
   result: z.unknown().optional(),
   timestamp: z.number().optional(),

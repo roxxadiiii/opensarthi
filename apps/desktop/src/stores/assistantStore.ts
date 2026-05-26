@@ -27,6 +27,7 @@ interface AssistantState {
   // Execution
   currentPlan: Plan | null;
   executingStepIndex: number | null;
+  taskPaused: boolean;
 
   // Model settings
   activeLocalModel: string;
@@ -61,7 +62,7 @@ interface AssistantState {
   setPlan: (plan: Plan | null) => void;
   updateStepStatus: (index: number, update: Partial<PlanStep>) => void;
   setExecutingStep: (index: number | null) => void;
-  addOrUpdateToolAction: (tool: string, description: string, status: "pending" | "running" | "success" | "error" | "skipped", result?: any) => void;
+  addOrUpdateToolAction: (tool: string, description: string, status: "pending" | "running" | "success" | "error" | "skipped" | "terminated", result?: any) => void;
   setActiveModels: (local: string, cloud: string) => void;
   setActiveProvider: (provider: string) => void;
   setCloudApiKey: (key: string) => void;
@@ -71,6 +72,7 @@ interface AssistantState {
   setWakeWordSettings: (enabled: boolean, threshold: number, phrases: string[]) => void;
   updateTokenUsage: (usage: { request_tokens: number; response_tokens: number; total_tokens: number }) => void;
   resetSessionTokens: () => void;
+  setTaskPaused: (paused: boolean) => void;
 }
 
 export const useAssistantStore = create<AssistantState>((set) => ({
@@ -81,6 +83,7 @@ export const useAssistantStore = create<AssistantState>((set) => ({
   threads: [],
   currentPlan: null,
   executingStepIndex: null,
+  taskPaused: false,
   activeLocalModel: "qwen2.5-coder:3b",
   activeCloudModel: "gemini-2.5-flash",
   activeProvider: "google",
@@ -114,9 +117,9 @@ export const useAssistantStore = create<AssistantState>((set) => ({
   setMessages: (messages) => set({ messages }),
   setThreads: (threads) => set({ threads }),
 
-  clearMessages: () => set({ messages: [], currentPlan: null, tokenUsage: { requestTokens: 0, responseTokens: 0, totalTokens: 0, sessionTotalTokens: 0 } }),
+  clearMessages: () => set({ messages: [], currentPlan: null, taskPaused: false, tokenUsage: { requestTokens: 0, responseTokens: 0, totalTokens: 0, sessionTotalTokens: 0 } }),
 
-  setPlan: (currentPlan) => set({ currentPlan, executingStepIndex: null }),
+  setPlan: (currentPlan) => set({ currentPlan, executingStepIndex: null, taskPaused: false }),
 
   setActiveModels: (local, cloud) => set({ activeLocalModel: local, activeCloudModel: cloud }),
   setActiveProvider: (activeProvider) => set({ activeProvider }),
@@ -169,7 +172,7 @@ export const useAssistantStore = create<AssistantState>((set) => ({
 
     let steps = [...plan.steps];
     
-    const existingIndex = steps.findIndex(st => st.tool === tool && st.description === description && st.status === "running");
+    const existingIndex = steps.findIndex(st => st.tool === tool && st.description === description && (st.status === "pending" || st.status === "running"));
     
     if (existingIndex >= 0) {
       steps[existingIndex] = { ...steps[existingIndex], status, result, timestamp: Date.now() };
@@ -187,4 +190,6 @@ export const useAssistantStore = create<AssistantState>((set) => ({
 
     return { currentPlan: { ...plan, steps } };
   }),
+
+  setTaskPaused: (taskPaused) => set({ taskPaused }),
 }));
