@@ -1,4 +1,4 @@
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import type { Plan, Message } from "../../lib/schemas";
 
 interface ActionLogProps {
@@ -109,79 +109,83 @@ export function ActionLog({ plan, selectedTaskId, messages }: ActionLogProps) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%" }}>
-      {reversedActions.map((action, idx) => {
-        const isRunning = action.status === "running";
-        const isSuccess = action.status === "success";
-        const isError = action.status === "error" || action.status === "failed";
-        const isTerminated = action.status === "terminated";
-        
-        let statusColor = "var(--text-muted)";
-        let statusText = "QUEUED";
-        let cardBg = "rgba(0, 0, 0, 0.25)";
-        let cardBorder = "1px solid var(--border)";
-        let glow = "none";
-        
-        if (isRunning) {
-          statusColor = "var(--accent)";
-          statusText = "RUNNING";
-          cardBg = "rgba(255, 0, 0, 0.15)";
-          cardBorder = "1px solid var(--accent)";
-          glow = "0 0 10px var(--accent-glow)";
-        } else if (isSuccess) {
-          statusColor = "var(--success)";
-          statusText = "SUCCESS";
-          cardBg = "rgba(0, 230, 180, 0.04)";
-          cardBorder = "1px solid rgba(0, 230, 180, 0.15)";
-        } else if (isError) {
-          statusColor = "var(--danger)";
-          statusText = "FAILED";
-          cardBg = "rgba(255, 60, 60, 0.04)";
-          cardBorder = "1px solid rgba(255, 60, 60, 0.15)";
-        } else if (isTerminated) {
-          statusColor = "var(--text-muted)";
-          statusText = "TERMINATED";
-          cardBg = "rgba(255, 255, 255, 0.02)";
-          cardBorder = "1px solid rgba(255, 255, 255, 0.08)";
-        }
+      <AnimatePresence initial={false}>
+        {reversedActions.map((action, idx) => {
+          const isRunning = action.status === "running";
+          const isSuccess = action.status === "success";
+          const isError = action.status === "error" || action.status === "failed";
+          const isTerminated = action.status === "terminated";
+          
+          let statusColor = "var(--text-muted)";
+          let statusText = "QUEUED";
+          let cardBg = "rgba(0, 0, 0, 0.25)";
+          let cardBorder = "1px solid var(--border)";
+          let glow = "none";
+          
+          if (isRunning) {
+            statusColor = "var(--accent)";
+            statusText = "RUNNING";
+            cardBg = "rgba(255, 0, 0, 0.15)";
+            cardBorder = "1px solid var(--accent)";
+            glow = "0 0 10px var(--accent-glow)";
+          } else if (isSuccess) {
+            statusColor = "var(--success)";
+            statusText = "SUCCESS";
+            cardBg = "rgba(0, 230, 180, 0.04)";
+            cardBorder = "1px solid rgba(0, 230, 180, 0.15)";
+          } else if (isError) {
+            statusColor = "var(--danger)";
+            statusText = "FAILED";
+            cardBg = "rgba(255, 60, 60, 0.04)";
+            cardBorder = "1px solid rgba(255, 60, 60, 0.15)";
+          } else if (isTerminated) {
+            statusColor = "var(--text-muted)";
+            statusText = "TERMINATED";
+            cardBg = "rgba(255, 255, 255, 0.02)";
+            cardBorder = "1px solid rgba(255, 255, 255, 0.08)";
+          }
 
-        return (
-          <motion.div
-            key={idx}
-            initial={{ opacity: 0, y: -6 }}
-            animate={{ opacity: 1, y: 0 }}
-            style={{
-              padding: "10px 12px",
-              borderRadius: "var(--radius-md)",
-              background: cardBg,
-              border: cardBorder,
-              boxShadow: glow,
-              display: "flex",
-              flexDirection: "column",
-              gap: "6px",
-              transition: "all 0.15s ease-in-out",
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div style={{ fontSize: "10px", fontWeight: "bold", fontFamily: "var(--font-mono)", color: "var(--accent)", textTransform: "uppercase" }}>
-                {action.tool}
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                <span style={{ fontSize: "9px", color: statusColor, fontWeight: "bold", letterSpacing: "0.05em" }}>
-                  {statusText}
-                </span>
-                {action.timestamp && (
-                  <span style={{ fontSize: "9px", color: "var(--text-secondary)", fontFamily: "var(--font-mono)", opacity: 0.85 }}>
-                    [{new Date(action.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}]
+          return (
+            <motion.div
+              layout
+              key={idx}
+              initial={{ opacity: 0, scale: 0.95, y: -12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 12 }}
+              transition={{ type: "spring", damping: 26, stiffness: 360 }}
+              style={{
+                padding: "10px 12px",
+                borderRadius: "var(--radius-md)",
+                background: cardBg,
+                border: cardBorder,
+                boxShadow: glow,
+                display: "flex",
+                flexDirection: "column",
+                gap: "6px",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ fontSize: "10px", fontWeight: "bold", fontFamily: "var(--font-mono)", color: "var(--accent)", textTransform: "uppercase" }}>
+                  {action.tool}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span style={{ fontSize: "9px", color: statusColor, fontWeight: "bold", letterSpacing: "0.05em" }}>
+                    {statusText}
                   </span>
-                )}
+                  {action.timestamp && (
+                    <span style={{ fontSize: "9px", color: "var(--text-secondary)", fontFamily: "var(--font-mono)", opacity: 0.85 }}>
+                      [{new Date(action.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}]
+                    </span>
+                  )}
+                </div>
               </div>
-            </div>
-            <div style={{ fontSize: "11px", color: "var(--text-secondary)", lineHeight: "1.4", fontFamily: "var(--font-mono)" }}>
-              {action.description}
-            </div>
-          </motion.div>
-        );
-      })}
+              <div style={{ fontSize: "11px", color: "var(--text-secondary)", lineHeight: "1.4", fontFamily: "var(--font-mono)" }}>
+                {action.description}
+              </div>
+            </motion.div>
+          );
+        })}
+      </AnimatePresence>
     </div>
   );
 }

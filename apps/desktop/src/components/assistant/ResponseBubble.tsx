@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Bot, User, Volume2 } from "lucide-react";
+import { Bot, User, Volume2, Copy, Check } from "lucide-react";
 import type { Message } from "../../lib/schemas";
 import { wsClient } from "../../lib/ws";
 
@@ -123,9 +123,86 @@ function ThinkingBlock({ thinking, isComplete, timestamp }: { thinking: string; 
   );
 }
 
+function CodeBlock({ lang, codeText }: { lang: string; codeText: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = () => {
+    navigator.clipboard.writeText(codeText);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  return (
+    <div
+      style={{
+        background: "rgba(0, 0, 0, 0.25)",
+        border: "1px solid var(--border)",
+        borderRadius: "var(--radius-md)",
+        margin: "8px 0",
+        overflow: "hidden",
+        backdropFilter: "blur(3px)",
+        WebkitBackdropFilter: "blur(3px)",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          fontSize: "10px",
+          color: "var(--text-secondary)",
+          borderBottom: "1px solid var(--border)",
+          padding: "6px 10px",
+          background: "rgba(0,0,0,0.15)",
+          fontFamily: "var(--font-mono)",
+          fontWeight: 600,
+        }}
+      >
+        <span style={{ color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+          {lang || "CODE"}
+        </span>
+        <button
+          onClick={handleCopy}
+          style={{
+            background: "transparent",
+            border: "none",
+            color: copied ? "var(--success, #00e6b4)" : "var(--text-secondary)",
+            cursor: "pointer",
+            fontSize: "10px",
+            fontFamily: "var(--font-mono)",
+            display: "flex",
+            alignItems: "center",
+            gap: "4px",
+            padding: "2px 6px",
+            borderRadius: "2px",
+            transition: "all 0.2s",
+          }}
+        >
+          {copied ? <Check size={10} /> : <Copy size={10} />}
+          {copied ? "COPIED" : "COPY CODE"}
+        </button>
+      </div>
+      <pre
+        style={{
+          padding: "10px",
+          fontFamily: "var(--font-mono)",
+          fontSize: "12px",
+          color: "var(--text-secondary)",
+          overflowX: "auto",
+          margin: 0,
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-all",
+          background: "transparent",
+        }}
+      >
+        <code>{codeText}</code>
+      </pre>
+    </div>
+  );
+}
+
 export function ResponseBubble({ message }: ResponseBubbleProps) {
   const isUser = message.role === "user";
   const [displayedContent, setDisplayedContent] = useState("");
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (isUser) {
@@ -168,48 +245,21 @@ export function ResponseBubble({ message }: ResponseBubbleProps) {
           codeLines = lines.slice(1);
         }
         const codeText = codeLines.join("\n");
-        return (
-          <pre
-            key={index}
-            style={{
-              background: "rgba(0, 0, 0, 0.4)",
-              border: "1px solid var(--border)",
-              padding: "10px",
-              borderRadius: "var(--radius-md)",
-              fontFamily: "var(--font-mono)",
-              fontSize: "12px",
-              color: "var(--text-secondary)",
-              overflowX: "auto",
-              margin: "6px 0",
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-all",
-              backdropFilter: "blur(4px)",
-              WebkitBackdropFilter: "blur(4px)",
-            }}
-          >
-            {lang && (
-              <div
-                style={{
-                  fontSize: "9px",
-                  color: "var(--accent)",
-                  borderBottom: "1px solid var(--border)",
-                  paddingBottom: "4px",
-                  marginBottom: "6px",
-                  textTransform: "uppercase",
-                }}
-              >
-                {lang}
-              </div>
-            )}
-            <code>{codeText}</code>
-          </pre>
-        );
+        return <CodeBlock key={index} lang={lang} codeText={codeText} />;
       }
       return <span key={index} style={{ whiteSpace: "pre-wrap" }}>{part}</span>;
     });
   };
 
   const { thinking, response, isComplete } = parseThinking(displayedContent);
+
+  const handleCopyResponse = () => {
+    if (response) {
+      navigator.clipboard.writeText(response);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
 
   return (
     <motion.div
@@ -221,6 +271,7 @@ export function ResponseBubble({ message }: ResponseBubbleProps) {
         gap: "10px",
         alignItems: "flex-start",
         flexDirection: isUser ? "row-reverse" : "row",
+        position: "relative",
       }}
     >
       {/* Avatar */}
@@ -229,87 +280,138 @@ export function ResponseBubble({ message }: ResponseBubbleProps) {
           width: "28px",
           height: "28px",
           borderRadius: "var(--radius-full)",
-          background: isUser ? "rgba(255, 255, 255, 0.08)" : "var(--accent-glow)",
+          background: isUser ? "rgba(var(--accent-rgb, 255, 255, 255), 0.08)" : "var(--accent-glow)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
           flexShrink: 0,
           border: `1px solid ${isUser ? "rgba(255, 255, 255, 0.2)" : "var(--border-accent)"}`,
           boxShadow: isUser ? "none" : "0 0 8px var(--accent-glow)",
+          color: isUser ? "var(--text-primary)" : "var(--accent)",
         }}
       >
         {isUser ? <User size={14} /> : <Bot size={14} />}
       </div>
 
-      {/* Bubble */}
-      <div
-        className="selectable"
-        style={{
-          maxWidth: "80%",
-          padding: "10px 14px",
-          borderRadius: isUser
-            ? "var(--radius-lg) var(--radius-sm) var(--radius-lg) var(--radius-lg)"
-            : "var(--radius-sm) var(--radius-lg) var(--radius-lg) var(--radius-lg)",
-          background: isUser ? "rgba(255, 255, 255, 0.03)" : "rgba(0, 0, 0, 0.35)",
-          border: `1px solid ${isUser ? "rgba(255, 255, 255, 0.12)" : "var(--border-accent)"}`,
-          fontSize: "13.5px",
-          lineHeight: 1.6,
-          color: "var(--text-primary)",
-          backdropFilter: "blur(12px) saturate(120%)",
-          WebkitBackdropFilter: "blur(12px) saturate(120%)",
-          wordBreak: "break-word",
-          display: "flex",
-          flexDirection: "column",
-          gap: "8px",
-          boxShadow: isUser ? "none" : "0 4px 20px rgba(0, 0, 0, 0.2)",
-        }}
-      >
-        {thinking && (
-          <ThinkingBlock thinking={thinking} isComplete={isComplete} timestamp={message.timestamp} />
-        )}
-        
-        {response && (
-          <div style={{ flex: 1 }}>{renderContent(response)}</div>
-        )}
+      {/* Bubble Wrapper with Speech Arrow */}
+      <div style={{ position: "relative", maxWidth: "80%", display: "flex", flexDirection: "column" }}>
+        {/* Speech Bubble Arrow */}
+        <div
+          style={{
+            position: "absolute",
+            top: "12px",
+            [isUser ? "right" : "left"]: "-4px",
+            width: "8px",
+            height: "8px",
+            background: isUser ? "rgba(255, 255, 255, 0.02)" : "rgba(0, 0, 0, 0.12)",
+            borderLeft: isUser ? "none" : "1px solid var(--border-accent)",
+            borderBottom: isUser ? "none" : "1px solid var(--border-accent)",
+            borderRight: isUser ? "1px solid rgba(255, 255, 255, 0.12)" : "none",
+            borderTop: isUser ? "1px solid rgba(255, 255, 255, 0.12)" : "none",
+            transform: "rotate(45deg)",
+            zIndex: 2,
+            pointerEvents: "none",
+            backdropFilter: "blur(3px)",
+            WebkitBackdropFilter: "blur(3px)",
+          }}
+        />
 
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "4px", borderTop: "1px solid rgba(255,255,255,0.04)", paddingTop: "4px", gap: "10px" }}>
-          <span style={{ fontSize: "9px", color: "var(--text-secondary)", opacity: 0.85, fontFamily: "var(--font-mono)", letterSpacing: "0.03em" }}>
-            [ {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })} ]
-          </span>
-          {!isUser && response && (
-            <button
-              onClick={() => {
-                // Strip thinking tag before TTS read-out
-                const clean = response
-                  .replace(/```[\s\S]*?```/g, "")
-                  .replace(/`([^`]+)`/g, "$1")
-                  .replace(/[*#_\-]/g, "")
-                  .trim();
-                if (clean) {
-                  wsClient.send("speak_text", { text: clean });
-                }
-              }}
-              style={{
-                background: "rgba(255, 0, 0, 0.1)",
-                border: "1px solid var(--border-accent)",
-                borderRadius: "var(--radius-sm)",
-                color: "var(--accent)",
-                padding: "2px 6px",
-                fontSize: "10px",
-                fontFamily: "var(--font-mono)",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: "4px",
-                transition: "all 0.2s ease",
-              }}
-              className="hover-glow"
-              title="Listen to response"
-            >
-              <Volume2 size={12} />
-              LISTEN
-            </button>
+        {/* Bubble */}
+        <div
+          className="selectable"
+          style={{
+            padding: "10px 14px",
+            borderRadius: isUser
+              ? "var(--radius-lg) var(--radius-sm) var(--radius-lg) var(--radius-lg)"
+              : "var(--radius-sm) var(--radius-lg) var(--radius-lg) var(--radius-lg)",
+            background: isUser ? "rgba(255, 255, 255, 0.02)" : "rgba(0, 0, 0, 0.12)",
+            border: `1px solid ${isUser ? "rgba(255, 255, 255, 0.12)" : "var(--border-accent)"}`,
+            fontSize: "13.5px",
+            lineHeight: 1.6,
+            color: "var(--text-primary)",
+            backdropFilter: "blur(3px)",
+            WebkitBackdropFilter: "blur(3px)",
+            wordBreak: "break-word",
+            display: "flex",
+            flexDirection: "column",
+            gap: "8px",
+            boxShadow: isUser ? "none" : "0 4px 20px rgba(0, 0, 0, 0.2)",
+            position: "relative",
+            zIndex: 1,
+          }}
+        >
+          {thinking && (
+            <ThinkingBlock thinking={thinking} isComplete={isComplete} timestamp={message.timestamp} />
           )}
+          
+          {response && (
+            <div style={{ flex: 1 }}>{renderContent(response)}</div>
+          )}
+
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "4px", borderTop: "1px solid rgba(255,255,255,0.04)", paddingTop: "4px", gap: "10px" }}>
+            <span style={{ fontSize: "9px", color: "var(--text-secondary)", opacity: 0.85, fontFamily: "var(--font-mono)", letterSpacing: "0.03em" }}>
+              [ {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })} ]
+            </span>
+            <div style={{ display: "flex", gap: "6px" }}>
+              {!isUser && response && (
+                <>
+                  <button
+                    onClick={handleCopyResponse}
+                    style={{
+                      background: "rgba(255, 255, 255, 0.05)",
+                      border: "1px solid var(--border)",
+                      borderRadius: "var(--radius-sm)",
+                      color: copied ? "var(--success, #00e6b4)" : "var(--text-secondary)",
+                      padding: "2px 6px",
+                      fontSize: "10px",
+                      fontFamily: "var(--font-mono)",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "4px",
+                      transition: "all 0.2s ease",
+                    }}
+                    title="Copy response text"
+                  >
+                    {copied ? <Check size={12} /> : <Copy size={12} />}
+                    {copied ? "COPIED!" : "COPY"}
+                  </button>
+                  <button
+                    onClick={() => {
+                      // Strip thinking tag before TTS read-out
+                      const clean = response
+                        .replace(/```[\s\S]*?```/g, "")
+                        .replace(/`([^`]+)`/g, "$1")
+                        .replace(/[*#_\-]/g, "")
+                        .trim();
+                      if (clean) {
+                        wsClient.send("speak_text", { text: clean });
+                      }
+                    }}
+                    style={{
+                      background: "rgba(255, 0, 0, 0.1)",
+                      border: "1px solid var(--border-accent)",
+                      borderRadius: "var(--radius-sm)",
+                      color: "var(--accent)",
+                      padding: "2px 6px",
+                      fontSize: "10px",
+                      fontFamily: "var(--font-mono)",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "4px",
+                      transition: "all 0.2s ease",
+                    }}
+                    className="hover-glow"
+                    title="Listen to response"
+                  >
+                    <Volume2 size={12} />
+                    LISTEN
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </motion.div>

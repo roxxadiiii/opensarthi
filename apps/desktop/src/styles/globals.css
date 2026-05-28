@@ -360,7 +360,7 @@ button:disabled { opacity: 0.4; cursor: not-allowed; border-color: var(--border)
   border: 2px solid var(--accent);
   border-radius: 50%;
   display: grid;
-  opacity: 0.75;
+  opacity: 0.85;
   box-shadow: 0 0 12px var(--accent-glow);
   animation: osOrbit 3.5s infinite linear;
 }
@@ -400,12 +400,12 @@ button:disabled { opacity: 0.4; cursor: not-allowed; border-color: var(--border)
 .os-glitch::before {
   color: var(--success);
   clip-path: polygon(0 0, 100% 0, 100% 35%, 0 35%);
-  animation: osGlitchTop 4s infinite;
+  animation: osGlitchTop 2s infinite;
 }
 .os-glitch::after {
   color: var(--text-secondary);
   clip-path: polygon(0 65%, 100% 65%, 100% 100%, 0 100%);
-  animation: osGlitchBot 4s infinite;
+  animation: osGlitchBot 2s infinite;
 }
 @keyframes osGlitchTop {
   0%,85%,100% { transform: translate(0); }

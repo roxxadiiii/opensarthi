@@ -10,6 +10,20 @@ import { ActionLog } from "../execution/ActionLog";
 import { TaskList } from "./TaskList";
 import { useAssistantStore } from "../../stores/assistantStore";
 import { wsClient } from "../../lib/ws";
+import pkg from "../../../package.json";
+
+const getBuildTarget = (): string => {
+  const userAgent = window.navigator.userAgent.toLowerCase();
+  const platform = window.navigator.platform?.toLowerCase() || "";
+  
+  if (userAgent.includes("win") || platform.includes("win")) return "WINDOWS BUILD";
+  if (userAgent.includes("mac") || platform.includes("mac")) return "MACOS BUILD";
+  if (userAgent.includes("android")) return "ANDROID BUILD";
+  if (userAgent.includes("iphone") || userAgent.includes("ipad")) return "IOS BUILD";
+  if (userAgent.includes("linux") || platform.includes("linux")) return "LINUX BUILD";
+  if (userAgent.includes("web") || platform.includes("web")) return "WEB BUILD";
+  return "SYSTEM BUILD";
+};
 
 interface AssistantOverlayProps {
   onOpenSettings: () => void;
@@ -510,10 +524,10 @@ export function AssistantOverlay({ onOpenSettings, onOpenHistory, onNewChat }: A
                   userSelect: "none",
                 }}>
                   {/* Orbital loader — used for both connected and connecting states */}
-                  <div
+                  {/* <div
                     className="os-orbital-loader"
                     style={isConnected ? {} : { opacity: 0.45, animationDuration: "1.4s" }}
-                  />
+                  /> */}
 
                   {/* Glitch title */}
                   <div
@@ -697,11 +711,19 @@ export function AssistantOverlay({ onOpenSettings, onOpenHistory, onNewChat }: A
               </div>
             </div>
             <div className="hud-panel" style={{ padding: "12px", display: "flex", flexDirection: "column", gap: "8px", flexShrink: 0 }}>
-              <div style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
-                SYSTEM BUILD
-              </div>
-              <div style={{ color: "var(--accent)", fontWeight: "bold", fontSize: "16px" }}>
-                OPENSARTHI 1.0
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                  <div style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
+                    {getBuildTarget()}
+                  </div>
+                  <div style={{ color: "var(--accent)", fontWeight: "bold", fontSize: "14px" }}>
+                    OPENSARTHI V{pkg.version}
+                  </div>
+                </div>
+                {/* Orbital loader animation in the empty space */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minWidth: "40px", minHeight: "14px", paddingRight: "4px" }}>
+                  <div className="os-orbital-loader" style={{ width: "40px", height: "14px" }} />
+                </div>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid var(--border)", paddingTop: "8px", marginTop: "4px" }}>
                 <span style={{ fontSize: "12px", fontWeight: "bold", color: isConnected ? "var(--accent)" : "var(--text-secondary)" }}>

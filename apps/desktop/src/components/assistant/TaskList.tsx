@@ -158,27 +158,31 @@ export function TaskList({
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "8px", overflowY: "auto", flex: 1 }}>
-          {reversedTasks.map((task) => (
-            <motion.div
-              key={task.id}
-              ref={(el) => {
-                if (taskRefsMap) taskRefsMap.current[task.id] = el as HTMLDivElement;
-              }}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              onClick={() => {
-                setSelectedTaskId(task.id === selectedTaskId ? null : task.id);
-                onScrollToMessage?.(task.userMsgId);
-              }}
-              style={{
-                padding: "9px 11px",
-                borderRadius: "var(--radius-md)",
-                border: `1px solid ${task.id === selectedTaskId ? "var(--border-accent)" : task.status === "running" ? "var(--border-accent)" : "var(--border)"}`,
-                background: task.id === selectedTaskId
-                  ? "var(--accent-glow)"
-                  : task.status === "running"
-                  ? "var(--accent-glow)"
-                  : "rgba(0,0,0,0.2)",
+          <AnimatePresence initial={false}>
+            {reversedTasks.map((task) => (
+              <motion.div
+                key={task.id}
+                ref={(el) => {
+                  if (taskRefsMap) taskRefsMap.current[task.id] = el as HTMLDivElement;
+                }}
+                layout
+                initial={{ opacity: 0, scale: 0.95, y: 12 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: -12 }}
+                transition={{ type: "spring", damping: 26, stiffness: 360 }}
+                onClick={() => {
+                  setSelectedTaskId(task.id === selectedTaskId ? null : task.id);
+                  onScrollToMessage?.(task.userMsgId);
+                }}
+                style={{
+                  padding: "9px 11px",
+                  borderRadius: "var(--radius-md)",
+                  border: `1px solid ${task.id === selectedTaskId ? "var(--border-accent)" : task.status === "running" ? "var(--border-accent)" : "var(--border)"}`,
+                  background: task.id === selectedTaskId
+                    ? "var(--accent-glow)"
+                    : task.status === "running"
+                    ? "var(--accent-glow)"
+                    : "rgba(0,0,0,0.2)",
                 display: "flex",
                 flexDirection: "column",
                 gap: "5px",
@@ -311,6 +315,7 @@ export function TaskList({
               )}
             </motion.div>
           ))}
+          </AnimatePresence>
         </div>
       )}
     </div>

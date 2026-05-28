@@ -39,6 +39,7 @@ export function HistoryView({ onClose }: HistoryViewProps) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
       style={{
         position: "fixed",
         top: 0, left: 0, right: 0, bottom: 0,
@@ -50,9 +51,14 @@ export function HistoryView({ onClose }: HistoryViewProps) {
         justifyContent: "center",
         zIndex: 50,
       }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div
+      <motion.div
         className="hud-panel"
+        initial={{ scale: 0.93, y: 15, opacity: 0 }}
+        animate={{ scale: 1, y: 0, opacity: 1 }}
+        exit={{ scale: 0.93, y: 15, opacity: 0 }}
+        transition={{ type: "spring", damping: 25, stiffness: 350 }}
         style={{
           width: "680px",
           height: "580px",
@@ -169,7 +175,7 @@ export function HistoryView({ onClose }: HistoryViewProps) {
             })
           )}
         </div>
-      </div>
+      </motion.div>
     </motion.div>
   );
 }
