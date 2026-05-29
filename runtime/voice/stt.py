@@ -2,24 +2,25 @@ import asyncio
 import numpy as np
 import io
 import wave
-import httpx
 from typing import Optional
 from faster_whisper import WhisperModel
+import speech_recognition as sr
 import structlog
 
 logger = structlog.get_logger()
 
 class FasterWhisperSTT:
     """
-    STT using a hybrid approach: Groq Cloud API for ultra-fast, high-accuracy transcription
-    if the Groq API key is available, falling back to local offline faster-whisper.
+    STT using a hybrid approach: Google Web Speech API for key-free, high-accuracy
+    transcription tuned to accents (like Indian English), falling back to local offline faster-whisper.
     """
 
-    MODEL_SIZE = "base.en"  # Options: tiny.en, tiny, base, base.en, small, medium, large-v3-turbo
+    MODEL_SIZE = "base"  # Multilingual base model for better accent and language support
 
     def __init__(self, language: str = "en"):
         self.language = language
         self._model: Optional[WhisperModel] = None
+        self.recognizer = sr.Recognizer()
 
     def load(self):
         """Load the Whisper model (downloads on first use)."""
@@ -39,9 +40,64 @@ class FasterWhisperSTT:
     def transcribe(self, audio_array: np.ndarray) -> tuple[str, float]:
         """
         Transcribe audio to text.
+        First tries Google Web Speech API with the appropriate accent/language code
+        for high-accuracy, key-free cloud transcription. Falls back to local offline faster-whisper.
         Returns: (transcript, confidence)
         audio_array: float32 numpy array at 16kHz
         """
+        # 1. Resolve correct language code based on user settings
+        try:
+            from config import settings
+            voice_config = getattr(settings, "voice_accent", "co.in")
+        except Exception:
+            voice_config = "co.in"
+
+        rec_lang = "en-IN"  # Default to Indian English
+        if voice_config in ['fr', 'es', 'de', 'hi', 'ja', 'it', 'pt']:
+            if voice_config == 'hi':
+                rec_lang = 'hi-IN'
+            elif voice_config == 'ja':
+                rec_lang = 'ja-JP'
+            elif voice_config == 'pt':
+                rec_lang = 'pt-BR'
+            else:
+                rec_lang = f"{voice_config}-{voice_config.upper()}"
+        elif voice_config == 'co.uk':
+            rec_lang = 'en-GB'
+        elif voice_config == 'com':
+            rec_lang = 'en-US'
+        elif voice_config == 'com.au':
+            rec_lang = 'en-AU'
+        elif voice_config == 'ca':
+            rec_lang = 'en-CA'
+        elif voice_config == 'co.nz':
+            rec_lang = 'en-NZ'
+        else:
+            rec_lang = 'en-IN'  # Default to Indian English if unknown or co.in
+
+        # 2. Try Google Web Speech API first (key-free, highly accurate for accents)
+        try:
+            # Convert float32 numpy array back to 16-bit PCM bytes
+            audio_int16 = np.clip(audio_array, -1.0, 1.0)
+            audio_int16 = (audio_int16 * 32767).astype(np.int16)
+            wav_bytes = audio_int16.tobytes()
+
+            # Create AudioData object
+            audio_data = sr.AudioData(wav_bytes, 16000, 2)
+
+            # Perform transcription
+            text = self.recognizer.recognize_google(audio_data, language=rec_lang)
+            if text and text.strip():
+                logger.info(f"Google STT transcribed ({rec_lang}): {text}")
+                return text.strip(), 1.0
+        except sr.UnknownValueError:
+            logger.info("Google STT could not understand audio, falling back to local Whisper")
+        except sr.RequestError as e:
+            logger.info(f"Google STT offline or request failed ({e}), falling back to local Whisper")
+        except Exception as e:
+            logger.error(f"Google STT error: {e}, falling back to local Whisper")
+
+        # 3. Fallback to local offline faster-whisper
         if self._model is None:
             self.load()
 
@@ -49,12 +105,27 @@ class FasterWhisperSTT:
             return "", 0.0
 
         try:
+            # Context prompt to steer local whisper transcription accent & vocabulary
+            initial_prompt = None
+            if "en" in rec_lang.lower():
+                initial_prompt = "Indian English accent, Sarthi assistant, computer code command"
+            elif "hi" in rec_lang.lower():
+                initial_prompt = "हिन्दी, भारतीय लहजा, सारथी, कंप्यूटर कमांड"
+
+            # Select target language code for Whisper model
+            target_lang = "en"
+            if "hi" in rec_lang.lower():
+                target_lang = "hi"
+            elif "-" in rec_lang:
+                target_lang = rec_lang.split("-")[0]
+
             segments, info = self._model.transcribe(
                 audio_array,
-                language=self.language,
+                language=target_lang,
                 vad_filter=True,         # Skip silent segments
                 beam_size=3,             # Lower = faster, less accurate
                 word_timestamps=False,
+                initial_prompt=initial_prompt
             )
             text = " ".join(seg.text.strip() for seg in segments).strip()
             return text, info.language_probability
@@ -63,55 +134,7 @@ class FasterWhisperSTT:
             return "", 0.0
 
     async def transcribe_async(self, audio_array: np.ndarray) -> str:
-        """Non-blocking transcription via Groq Cloud API or thread pool fallback."""
-        from config import settings
-        
-        # Try Groq API if key is set
-        groq_key = getattr(settings, "groq_api_key", None)
-        if groq_key and groq_key.strip():
-            logger.info("Using Groq Cloud Whisper API for real-time transcription")
-            try:
-                # Convert float32 numpy array to 16-bit PCM WAV in memory
-                wav_io = io.BytesIO()
-                with wave.open(wav_io, 'wb') as wav_file:
-                    wav_file.setnchannels(1)
-                    wav_file.setsampwidth(2) # 16-bit PCM
-                    wav_file.setframerate(16000)
-                    # Convert float32 [-1.0, 1.0] to int16
-                    audio_int16 = np.clip(audio_array, -1.0, 1.0)
-                    audio_int16 = (audio_int16 * 32767).astype(np.int16)
-                    wav_file.writeframes(audio_int16.tobytes())
-                wav_bytes = wav_io.getvalue()
-
-                headers = {
-                    "Authorization": f"Bearer {groq_key}",
-                }
-                files = {
-                    "file": ("audio.wav", wav_bytes, "audio/wav"),
-                }
-                data = {
-                    "model": "whisper-large-v3-turbo",
-                    "language": self.language,
-                }
-                
-                async with httpx.AsyncClient() as client:
-                    response = await client.post(
-                        "https://api.groq.com/openai/v1/audio/transcriptions",
-                        headers=headers,
-                        files=files,
-                        data=data,
-                        timeout=8.0
-                    )
-                    if response.status_code == 200:
-                        transcript = response.json().get("text", "").strip()
-                        logger.info("Groq STT transcription success", text=transcript)
-                        return transcript
-                    else:
-                        logger.error("Groq STT API returned error code", status_code=response.status_code, body=response.text)
-            except Exception as e:
-                logger.error("Failed transcribing via Groq API, falling back to local Whisper", error=str(e))
-
-        # Fallback to local faster-whisper
-        loop = asyncio.get_event_loop()
+        """Non-blocking transcription via thread pool executor."""
+        loop = asyncio.get_running_loop()
         text, _ = await loop.run_in_executor(None, self.transcribe, audio_array)
         return text

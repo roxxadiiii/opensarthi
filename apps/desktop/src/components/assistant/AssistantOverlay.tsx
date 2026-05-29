@@ -523,17 +523,19 @@ export function AssistantOverlay({ onOpenSettings, onOpenHistory, onNewChat }: A
                   alignItems: "center", justifyContent: "center", gap: "28px",
                   userSelect: "none",
                 }}>
-                  {/* Orbital loader — used for both connected and connecting states */}
-                  {/* <div
-                    className="os-orbital-loader"
-                    style={isConnected ? {} : { opacity: 0.45, animationDuration: "1.4s" }}
-                  /> */}
+                  {/* Orbital loader — only show when not connected */}
+                  {!isConnected && (
+                    <div
+                      className="os-orbital-loader"
+                      style={{ opacity: 0.45, animationDuration: "1.4s" }}
+                    />
+                  )}
 
                   {/* Glitch title */}
                   <div
                     className="os-glitch"
                     data-text="OPENSARTHI"
-                    style={{ fontSize: "15px" }}
+                    style={{ fontSize: "18px" }}
                   >
                     OPENSARTHI
                   </div>
@@ -543,7 +545,7 @@ export function AssistantOverlay({ onOpenSettings, onOpenHistory, onNewChat }: A
                     fontFamily: "var(--font-mono)",
                     fontSize: "11px",
                     color: "var(--text-secondary)",
-                    letterSpacing: "0.15em",
+                    letterSpacing: "0.22em",
                     textAlign: "center",
                     lineHeight: 1.8,
                   }}>
@@ -558,12 +560,12 @@ export function AssistantOverlay({ onOpenSettings, onOpenHistory, onNewChat }: A
 
                   {/* Subtle divider + hint */}
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "8px", opacity: 0.55 }}>
-                    <div style={{ width: "80px", height: "1px", background: "var(--accent)" }} />
+                    <div style={{ width: "120px", height: "1px", background: "var(--accent)" }} />
                     <span style={{
-                      fontSize: "9px",
+                      fontSize: "11px",
                       color: "var(--accent)",
                       letterSpacing: "0.22em",
-                      opacity: 0.7,
+                      opacity: 0.8,
                     }}>
                       SPEAK OR TYPE TO BEGIN
                     </span>
