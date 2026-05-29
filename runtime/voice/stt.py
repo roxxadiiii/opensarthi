@@ -1,7 +1,5 @@
 import asyncio
 import numpy as np
-import io
-import wave
 from typing import Optional
 from faster_whisper import WhisperModel
 import speech_recognition as sr
@@ -37,12 +35,12 @@ class FasterWhisperSTT:
         except Exception as e:
             logger.error("Failed to load local faster-whisper model", error=str(e))
 
-    def transcribe(self, audio_array: np.ndarray) -> tuple[str, float]:
+    def transcribe(self, audio_array: np.ndarray) -> tuple[str, float, str]:
         """
         Transcribe audio to text.
-        First tries Google Web Speech API with the appropriate accent/language code
-        for high-accuracy, key-free cloud transcription. Falls back to local offline faster-whisper.
-        Returns: (transcript, confidence)
+        First tries Google Web Speech API (key-free, accent-aware).
+        Falls back to local offline faster-whisper.
+        Returns: (transcript, confidence, engine_used)
         audio_array: float32 numpy array at 16kHz
         """
         # 1. Resolve correct language code based on user settings
@@ -88,21 +86,20 @@ class FasterWhisperSTT:
             # Perform transcription
             text = self.recognizer.recognize_google(audio_data, language=rec_lang)
             if text and text.strip():
-                logger.info(f"Google STT transcribed ({rec_lang}): {text}")
-                return text.strip(), 1.0
+                return text.strip(), 1.0, "google"
         except sr.UnknownValueError:
-            logger.info("Google STT could not understand audio, falling back to local Whisper")
-        except sr.RequestError as e:
-            logger.info(f"Google STT offline or request failed ({e}), falling back to local Whisper")
+            pass  # silence — local Whisper fallback handles it
+        except sr.RequestError:
+            pass  # offline — fall through to local Whisper silently
         except Exception as e:
-            logger.error(f"Google STT error: {e}, falling back to local Whisper")
+            logger.warning(f"Google STT error: {e}")
 
         # 3. Fallback to local offline faster-whisper
         if self._model is None:
             self.load()
 
         if self._model is None:
-            return "", 0.0
+            return "", 0.0, "whisper"
 
         try:
             # Context prompt to steer local whisper transcription accent & vocabulary
@@ -128,13 +125,13 @@ class FasterWhisperSTT:
                 initial_prompt=initial_prompt
             )
             text = " ".join(seg.text.strip() for seg in segments).strip()
-            return text, info.language_probability
+            return text, info.language_probability, "whisper"
         except Exception as e:
             logger.error("Local STT transcription failed", error=str(e))
-            return "", 0.0
+            return "", 0.0, "whisper"
 
     async def transcribe_async(self, audio_array: np.ndarray) -> str:
         """Non-blocking transcription via thread pool executor."""
         loop = asyncio.get_running_loop()
-        text, _ = await loop.run_in_executor(None, self.transcribe, audio_array)
+        text, _, _engine = await loop.run_in_executor(None, self.transcribe, audio_array)
         return text

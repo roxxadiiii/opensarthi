@@ -207,8 +207,17 @@ export function useWebSocket(port: number | null) {
       }),
 
       wsClient.on("thread_loaded", (msg) => {
-        const { messages } = msg.payload as any;
-        useAssistantStore.getState().setMessages(messages);
+        const { messages, token_totals } = msg.payload as any;
+        const store = useAssistantStore.getState();
+        store.setMessages(messages);
+        // Restore per-thread token usage so the display reflects this thread's history
+        if (token_totals) {
+          store.restoreThreadTokens({
+            request_tokens: token_totals.request_tokens,
+            response_tokens: token_totals.response_tokens,
+            total_tokens: token_totals.total_tokens,
+          });
+        }
         setPlan(null);
         setExecutingStep(null);
       }),

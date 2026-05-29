@@ -24,7 +24,10 @@ def init_db():
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS threads (
             id TEXT PRIMARY KEY,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            token_request INTEGER DEFAULT 0,
+            token_response INTEGER DEFAULT 0,
+            token_total INTEGER DEFAULT 0
         )
     ''')
     cursor.execute('''
@@ -37,6 +40,12 @@ def init_db():
             FOREIGN KEY(thread_id) REFERENCES threads(id)
         )
     ''')
+    # Migrate: add token columns if they don't exist yet (for existing DBs)
+    for col, default in [("token_request", 0), ("token_response", 0), ("token_total", 0)]:
+        try:
+            cursor.execute(f"ALTER TABLE threads ADD COLUMN {col} INTEGER DEFAULT {default}")
+        except Exception:
+            pass  # Column already exists
     conn.commit()
     conn.close()
 
@@ -67,20 +76,46 @@ def get_history(thread_id: str):
     conn.close()
     return [{"id": r[0], "role": r[1], "content": r[2], "timestamp": r[3]} for r in rows]
 
+def accumulate_thread_tokens(thread_id: str, request_tokens: int, response_tokens: int, total_tokens: int):
+    """Add token counts from one response to the thread's running totals."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        '''UPDATE threads
+           SET token_request  = COALESCE(token_request, 0)  + ?,
+               token_response = COALESCE(token_response, 0) + ?,
+               token_total    = COALESCE(token_total, 0)    + ?
+           WHERE id = ?''',
+        (request_tokens, response_tokens, total_tokens, thread_id)
+    )
+    conn.commit()
+    conn.close()
+
+def get_thread_tokens(thread_id: str) -> dict:
+    """Return the cumulative token usage for a thread."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('SELECT token_request, token_response, token_total FROM threads WHERE id = ?', (thread_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if row:
+        return {"request_tokens": row[0] or 0, "response_tokens": row[1] or 0, "total_tokens": row[2] or 0}
+    return {"request_tokens": 0, "response_tokens": 0, "total_tokens": 0}
+
 def get_all_threads():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT t.id, t.created_at, m.content 
-        FROM threads t 
-        LEFT JOIN messages m ON t.id = m.thread_id 
+        SELECT t.id, t.created_at, m.content, t.token_total
+        FROM threads t
+        LEFT JOIN messages m ON t.id = m.thread_id
         WHERE m.role = 'user'
         GROUP BY t.id
         ORDER BY t.created_at DESC
     ''')
     rows = cursor.fetchall()
     conn.close()
-    return [{"id": r[0], "created_at": r[1], "first_message": r[2]} for r in rows]
+    return [{"id": r[0], "created_at": r[1], "first_message": r[2], "token_total": r[3] or 0} for r in rows]
 
 def delete_thread(thread_id: str):
     conn = sqlite3.connect(DB_PATH)

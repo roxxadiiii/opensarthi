@@ -72,6 +72,7 @@ interface AssistantState {
   setWakeWordSettings: (enabled: boolean, threshold: number, phrases: string[]) => void;
   updateTokenUsage: (usage: { request_tokens: number; response_tokens: number; total_tokens: number }) => void;
   resetSessionTokens: () => void;
+  restoreThreadTokens: (usage: { request_tokens: number; response_tokens: number; total_tokens: number }) => void;
   setTaskPaused: (paused: boolean) => void;
 }
 
@@ -146,6 +147,15 @@ export const useAssistantStore = create<AssistantState>((set) => ({
 
   resetSessionTokens: () => set((s) => ({
     tokenUsage: { ...s.tokenUsage, sessionTotalTokens: 0 }
+  })),
+
+  restoreThreadTokens: (usage: { request_tokens: number; response_tokens: number; total_tokens: number }) => set(() => ({
+    tokenUsage: {
+      requestTokens: usage.request_tokens,
+      responseTokens: usage.response_tokens,
+      totalTokens: usage.total_tokens,
+      sessionTotalTokens: usage.total_tokens,
+    }
   })),
 
   updateStepStatus: (index, update) =>

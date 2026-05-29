@@ -10,6 +10,14 @@ use tracing_subscriber::EnvFilter;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Suppress Qt/WebKitGTK font format warnings from AppImage bundled libraries.
+    // The "QFont::fromString: Invalid description" noise is harmless but clutters output.
+    std::env::set_var("QT_LOGGING_RULES", "qt.qpa.fonts.warning=false");
+    // Ensure consistent DPI handling in AppImage environments
+    if std::env::var("QT_FONT_DPI").is_err() {
+        std::env::set_var("QT_FONT_DPI", "96");
+    }
+
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env().add_directive("info".parse().unwrap()))
         .init();

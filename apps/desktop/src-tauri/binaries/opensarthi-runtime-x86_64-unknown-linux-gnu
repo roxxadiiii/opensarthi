@@ -1,16 +1,23 @@
 #!/usr/bin/env bash
+# OpenSarthi runtime sidecar launcher
+# Handles first-boot venv bootstrapping and subsequent launches.
+
+# ── Silence the "Locale not supported by C library" Gtk warning ───────────────
+export LANG="${LANG:-en_US.UTF-8}"
+export LC_ALL="${LC_ALL:-en_US.UTF-8}"
+
 # Get the absolute path to this script's directory
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-# Clean up AppImage environment variables to avoid python execution crashes
+# Clean up AppImage environment variables to avoid Python execution crashes
 unset PYTHONHOME
 unset PYTHONPATH
 
-# 1. Resolve the runtime directory inside the AppImage or monorepo
+# ── 1. Resolve the runtime directory ──────────────────────────────────────────
 if [ -d "/mnt/kartik/ai_desktop_agent_assistant/opensarthi/runtime" ]; then
+    # Developer machine shortcut
     RUNTIME_DIR="/mnt/kartik/ai_desktop_agent_assistant/opensarthi/runtime"
 elif [ -d "$SCRIPT_DIR/../lib/OpenSarthi/_up_/_up_/_up_/runtime" ]; then
-    # Production AppImage directory path
     RUNTIME_DIR="$SCRIPT_DIR/../lib/OpenSarthi/_up_/_up_/_up_/runtime"
 elif [ -d "$SCRIPT_DIR/resources/runtime" ]; then
     RUNTIME_DIR="$SCRIPT_DIR/resources/runtime"
@@ -22,117 +29,119 @@ else
     RUNTIME_DIR="$SCRIPT_DIR/../../../../runtime"
 fi
 
-# 2. Always use the user's home config venv (portable across machines)
+# ── 2. Venv paths ─────────────────────────────────────────────────────────────
 USER_VENV_DIR="$HOME/.config/opensarthi"
 USER_VENV="$USER_VENV_DIR/.venv"
 
-# Check if a venv has all required packages
+# ── 3. Check if a venv has all required packages ──────────────────────────────
 _check_venv() {
     local venv_python="$1/bin/python3"
-    if [ -f "$venv_python" ]; then
-        local err_msg
-        err_msg=$(env -u LD_LIBRARY_PATH -u LD_PRELOAD "$venv_python" -c "import uvicorn, fastapi, speech_recognition" 2>&1)
-        if [ $? -eq 0 ]; then
-            return 0
-        else
-            echo "[SidecarWrapper] Venv check failed for $1: $err_msg" >&2
-            return 1
-        fi
-    else
-        echo "[SidecarWrapper] Venv python not found at $venv_python" >&2
+    if [ ! -f "$venv_python" ]; then
         return 1
     fi
+    env -u LD_LIBRARY_PATH -u LD_PRELOAD "$venv_python" \
+        -c "import uvicorn, fastapi, speech_recognition" 2>/dev/null
 }
 
-# Prefer runtime/.venv (dev) then user venv (production), then fallback to bootstrap
+# ── 4. Select or bootstrap the active venv ────────────────────────────────────
 if _check_venv "$RUNTIME_DIR/.venv"; then
+    # Dev venv (monorepo)
     ACTIVE_VENV="$RUNTIME_DIR/.venv"
+
 elif _check_venv "$USER_VENV"; then
+    # Previously bootstrapped user venv
     ACTIVE_VENV="$USER_VENV"
+
 else
-    # Bootstrap: Create a fresh venv in the user's home config folder
-    echo "Bootstrapping Python virtual environment inside $USER_VENV_DIR..."
+    # ── First-boot bootstrap ──────────────────────────────────────────────────
+    echo "[OpenSarthi] First launch: setting up Python runtime in $USER_VENV_DIR"
+    echo "[OpenSarthi] This may take a few minutes — please wait..."
     mkdir -p "$USER_VENV_DIR"
-    
-    # Check for portable Python first
-    PORTABLE_PYTHON_DIR="$USER_VENV_DIR/portable_python"
-    PORTABLE_PYTHON_BIN="$PORTABLE_PYTHON_DIR/bin/python3"
-    
+
+    # Find a working Python 3.10+ on the system
+    PORTABLE_PYTHON_BIN="$USER_VENV_DIR/portable_python/bin/python3"
     PYTHON_BIN=""
+
     if [ -f "$PORTABLE_PYTHON_BIN" ]; then
         PYTHON_BIN="$PORTABLE_PYTHON_BIN"
     fi
 
-    # Find a working Python 3.10+ on the system if no portable Python exists
     if [ -z "$PYTHON_BIN" ]; then
-        for py in python3.12 python3.11 python3.10 python3 /usr/bin/python3 /bin/python3 /opt/homebrew/bin/python3; do
-            if env -u LD_LIBRARY_PATH "$py" -c "import sys; sys.exit(0 if sys.version_info >= (3,10) else 1)" 2>/dev/null; then
+        for py in python3.12 python3.11 python3.10 python3 /usr/bin/python3 /bin/python3; do
+            if env -u LD_LIBRARY_PATH "$py" -c \
+                "import sys; sys.exit(0 if sys.version_info >= (3,10) else 1)" 2>/dev/null; then
                 PYTHON_BIN="$py"
                 break
             fi
         done
     fi
-    
-    # Download portable Python build if still not found
+
+    # Download standalone Python if nothing found
     if [ -z "$PYTHON_BIN" ]; then
-        echo "No compatible Python 3.10+ found on this system."
-        echo "Downloading self-contained Python runtime for OpenSarthi..."
-        mkdir -p "$USER_VENV_DIR"
-        
+        echo "[OpenSarthi] No Python 3.10+ found. Downloading standalone runtime..."
         PYTHON_TAR_URL="https://github.com/indygreg/python-build-standalone/releases/download/20240107/cpython-3.10.13%2B20240107-x86_64-unknown-linux-gnu-install_only.tar.gz"
         TAR_PATH="$USER_VENV_DIR/python.tar.gz"
-        
+        PORTABLE_PYTHON_DIR="$USER_VENV_DIR/portable_python"
+
         if command -v curl >/dev/null 2>&1; then
-            curl -L "$PYTHON_TAR_URL" -o "$TAR_PATH"
+            curl -L "$PYTHON_TAR_URL" -o "$TAR_PATH" || { echo "ERROR: Download failed."; exit 1; }
         elif command -v wget >/dev/null 2>&1; then
-            wget -O "$TAR_PATH" "$PYTHON_TAR_URL"
+            wget -O "$TAR_PATH" "$PYTHON_TAR_URL" || { echo "ERROR: Download failed."; exit 1; }
         else
-            echo "ERROR: Neither curl nor wget found. Cannot download standalone Python runtime."
+            echo "ERROR: Neither curl nor wget found. Cannot download standalone Python."
             exit 1
         fi
-        
-        if [ $? -eq 0 ]; then
-            echo "Extracting standalone Python runtime..."
-            mkdir -p "$PORTABLE_PYTHON_DIR"
-            tar -xzf "$TAR_PATH" -C "$PORTABLE_PYTHON_DIR" --strip-components=1
-            rm "$TAR_PATH"
-            
-            if [ -f "$PORTABLE_PYTHON_BIN" ]; then
-                PYTHON_BIN="$PORTABLE_PYTHON_BIN"
-                echo "Standalone Python runtime installed successfully."
-            else
-                echo "ERROR: Extraction failed or python3 binary not found."
-                exit 1
-            fi
+
+        echo "[OpenSarthi] Extracting standalone Python..."
+        mkdir -p "$PORTABLE_PYTHON_DIR"
+        tar -xzf "$TAR_PATH" -C "$PORTABLE_PYTHON_DIR" --strip-components=1
+        rm -f "$TAR_PATH"
+
+        if [ -f "$PORTABLE_PYTHON_BIN" ]; then
+            PYTHON_BIN="$PORTABLE_PYTHON_BIN"
+            echo "[OpenSarthi] Standalone Python installed."
         else
-            echo "ERROR: Failed to download standalone Python runtime."
+            echo "ERROR: Python extraction failed."
             exit 1
         fi
     fi
-    
+
+    # Create venv
+    echo "[OpenSarthi] Creating virtual environment..."
     env -u LD_LIBRARY_PATH "$PYTHON_BIN" -m venv "$USER_VENV"
     if [ $? -ne 0 ]; then
         echo "ERROR: Failed to create Python virtual environment."
         exit 1
     fi
-    
-    ACTIVE_VENV="$USER_VENV"
-    
-    # Activate and install sidecar dependencies
-    source "$ACTIVE_VENV/bin/activate"
+
+    # Install dependencies
+    echo "[OpenSarthi] Installing dependencies (this only happens once)..."
+    source "$USER_VENV/bin/activate"
     env -u LD_LIBRARY_PATH pip install --upgrade pip --quiet
+
     if [ -f "$RUNTIME_DIR/requirements.txt" ]; then
-        env -u LD_LIBRARY_PATH pip install -r "$RUNTIME_DIR/requirements.txt" --quiet
-        echo "Dependencies installed successfully."
+        env -u LD_LIBRARY_PATH pip install -r "$RUNTIME_DIR/requirements.txt"
+        if [ $? -ne 0 ]; then
+            echo "ERROR: Dependency installation failed. Check your internet connection."
+            exit 1
+        fi
+        echo "[OpenSarthi] Dependencies installed successfully."
     else
         echo "WARNING: requirements.txt not found at $RUNTIME_DIR/requirements.txt"
     fi
+    deactivate
+
+    # Verify the newly bootstrapped venv actually works
+    if ! _check_venv "$USER_VENV"; then
+        echo "ERROR: Bootstrap completed but runtime check failed. Try deleting $USER_VENV and restarting."
+        exit 1
+    fi
+
+    ACTIVE_VENV="$USER_VENV"
+    echo "[OpenSarthi] Setup complete. Starting runtime..."
 fi
 
-# 3. Activate the virtual environment
+# ── 5. Activate and launch ────────────────────────────────────────────────────
 source "$ACTIVE_VENV/bin/activate"
-
-# 4. Enter the resolved runtime directory and launch the backend
 cd "$RUNTIME_DIR"
 exec env -u LD_LIBRARY_PATH python main.py
-

@@ -35,10 +35,24 @@ class VoicePipeline:
     async def initialize(self):
         """Pre-adjust for ambient noise and pre-load local offline STT model."""
         logger.info("Initializing voice models")
+
+        # Suppress ALSA/JACK stderr noise that floods logs on Linux
+        if platform.system() == "Linux":
+            try:
+                devnull_fd = os.open(os.devnull, os.O_WRONLY)
+                old_stderr = os.dup(2)
+                os.dup2(devnull_fd, 2)
+            except Exception:
+                old_stderr = None
+                devnull_fd = None
+        else:
+            old_stderr = None
+            devnull_fd = None
+
         try:
             import pyaudio
             logger.info("PyAudio imported successfully in pipeline")
-        except Exception as pe:
+        except Exception:
             logger.exception("Failed to import pyaudio directly")
 
         try:
@@ -47,6 +61,13 @@ class VoicePipeline:
                 logger.info("Microphone initialized and calibrated.")
         except Exception as e:
             logger.warning(f"Could not initialize microphone: {e}")
+        finally:
+            # Restore stderr
+            if old_stderr is not None:
+                os.dup2(old_stderr, 2)
+                os.close(old_stderr)
+            if devnull_fd is not None:
+                os.close(devnull_fd)
 
         try:
             # Pre-load local STT model in background so first-time capture is instantaneous
@@ -107,16 +128,15 @@ class VoicePipeline:
                         # Convert audio to numpy float32 array at 16kHz
                         raw_data = audio.get_raw_data(convert_rate=16000, convert_width=2)
                         audio_array = np.frombuffer(raw_data, dtype=np.int16).astype(np.float32) / 32767.0
-                        
-                        # Transcribe locally in background executor (completely network-free offline transcription)
+
                         loop = asyncio.get_running_loop()
-                        text, confidence = await loop.run_in_executor(None, self.stt.transcribe, audio_array)
-                        
+                        text, confidence, engine = await loop.run_in_executor(None, self.stt.transcribe, audio_array)
+
                         if text:
-                            logger.info(f"Local offline STT transcribed: {text}")
+                            logger.info(f"STT [{engine}] transcribed: {text}")
                             yield text
                     except Exception as e:
-                        logger.error(f"Local STT processing failed: {e}")
+                        logger.error(f"STT processing failed: {e}")
                 
                 await asyncio.sleep(0.1)
         except asyncio.CancelledError:

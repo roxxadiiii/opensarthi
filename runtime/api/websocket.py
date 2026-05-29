@@ -250,6 +250,9 @@ class Session:
             ast_timestamp = int(time.time() * 1000)
             db.save_message(self.thread_id, ast_msg_id, "assistant", final_output, ast_timestamp)
 
+            # Persist cumulative token totals for this thread
+            db.accumulate_thread_tokens(self.thread_id, request_tokens, response_tokens, total_tokens)
+
             # Send the assistant's response back to the UI with token usage
             await self.send_message("assistant_response", {
                 "id": ast_msg_id,
@@ -367,7 +370,12 @@ class Session:
             thread_id = payload.get("thread_id")
             self.thread_id = thread_id
             messages = db.get_history(thread_id)
-            await self.send_message("thread_loaded", {"thread_id": thread_id, "messages": messages})
+            tokens = db.get_thread_tokens(thread_id)
+            await self.send_message("thread_loaded", {
+                "thread_id": thread_id,
+                "messages": messages,
+                "token_totals": tokens,
+            })
         elif msg_type == "update_settings":
             from config import settings, save_settings_to_env
             import os
